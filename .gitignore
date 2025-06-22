@@ -54,3 +54,11 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Build info
+tsconfig.build.tsbuildinfo
+
+# To be removed after env file is added
+passwords_temp.txt
+
+
