@@ -11,8 +11,8 @@ const AppDataSource = new DataSource({
     rejectUnauthorized: false,
   },
   synchronize: false,
-  entities: [join(__dirname, '../**/*.entity.{ts,js}')],
-  migrations: [join(__dirname, '../migrations/*{.ts,.js}')],
+  entities: ['src/**/*.entity.{ts,js}'],
+  migrations: ['src/migrations/*{.ts,.js}'],
 });
 
 export default AppDataSource;

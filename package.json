@@ -21,7 +21,7 @@
     "migration:new": "ts-node scripts/create-migration.ts",
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/config/orm-cli.config.ts",
     "migration:revert": "ts-node ./node_modules/typeorm/cli.js migration:revert -d src/config/orm-cli.config.ts",
-    "migration:generate": "ts-node ./node_modules/typeorm/cli.js migration:generate src/migrations/generated-migration -d src/config/orm-cli.config.ts"
+    "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/config/orm-cli.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -32,7 +32,6 @@
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.0",
-    "@nestjs/swagger": "^7.4.2",
     "@nestjs/typeorm": "^11.0.0",
     "bcrypt": "^6.0.0",
     "chalk": "^5.4.1",
@@ -44,7 +43,6 @@
     "pg": "^8.16.2",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.25"
   },
   "devDependencies": {

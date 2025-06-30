@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RegisterDto } from './dto/register.dto';
 
 
 @ApiTags('Auth')
@@ -16,15 +17,15 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiBody({ type: LoginDto })
   async login(@Body() loginDto: LoginDto) {
-    // return this.authService.login(loginDto);
+    return this.authService.login(loginDto);
   }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
-  @ApiBody({ type: LoginDto })
-  async register(@Body() loginDto: LoginDto) {
-    // return this.authService.register(loginDto);
+  @ApiBody({ type: RegisterDto })
+  async register(@Body() registerDto: RegisterDto) {
+   return this.authService.register(registerDto);
   }
 
   @UseGuards(JwtAuthGuard)

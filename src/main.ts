@@ -7,8 +7,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const config = new DocumentBuilder()
-    .setTitle('Define Auth API')
-    .setDescription('Authentication endpoints for Define!')
+    .setTitle('define!. Auth API')
+    .setDescription('Authentication endpoints for define!.')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
