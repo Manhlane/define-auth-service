@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session } from './entities/session.entity';
@@ -14,41 +14,36 @@ export class SessionService {
 
   async create(
     user: User,
-    rawToken: string,
+    refreshToken: string,
     userAgent?: string,
     ipAddress?: string,
     location?: string,
-    refreshToken?: string,
     expiresAt?: Date,
   ): Promise<Session> {
-    const hashed = await bcrypt.hash(rawToken, 10);
-    const hashedRefresh = refreshToken ? await bcrypt.hash(refreshToken, 10) : null;
-
+    console.log("Refresh Token: " + refreshToken)
+    const hashedToken = await bcrypt.hash(refreshToken, 10);
+    console.log("Hashed Token: " + hashedToken);
     const session = this.sessionRepo.create({
       user,
-      token: hashed,
-      refreshToken: hashedRefresh,
+      refreshToken: hashedToken,
       userAgent,
       ipAddress,
       location,
-      expiresAt
+      expiresAt,
     });
+
+    console.log("Session:" + session);
+    console.log("Session User:" + session.user.name);
+    console.log("Session refreshToken:" + session.refreshToken);
+    console.log("Session expiresAt:" + session.expiresAt);
+    
     return this.sessionRepo.save(session);
   }
 
-
-  async validate(userId: string, incomingToken: string): Promise<boolean> {
-    const sessions = await this.sessionRepo.find({
-      where: { user: { id: userId }, isRevoked: false },
-    });
-
-    for (const session of sessions) {
-      const isMatch = await bcrypt.compare(incomingToken, session.token);
-      if (isMatch) return true;
-    }
-
-    return false;
+  async revokeSessionById(sessionId: string): Promise<void> {
+    await this.sessionRepo.update({ id: sessionId }, { isRevoked: true, expiresAt: new Date() });
   }
+
 
   async revoke(userId: string): Promise<void> {
     await this.sessionRepo.update({ user: { id: userId } }, { isRevoked: true });
@@ -65,3 +60,4 @@ export class SessionService {
     });
   }
 }
+

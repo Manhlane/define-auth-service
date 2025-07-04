@@ -11,6 +11,7 @@ import { User } from 'src/users/entities/user.entity';
 @Entity('sessions')
 export class Session {
   @PrimaryGeneratedColumn('uuid')
+  @Index()
   id: string;
 
   @ManyToOne(() => User, (user) => user.sessions, { onDelete: 'CASCADE' })
@@ -18,10 +19,6 @@ export class Session {
 
   @Column({ type: 'text', nullable: true })
   refreshToken?: string;
-
-  @Column({ type: 'text' })
-  @Index()
-  token: string;
 
   @Column({ type: 'timestamp', nullable: true })
   expiresAt?: Date;
@@ -40,4 +37,7 @@ export class Session {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @Column({ default: 'ACTIVE' })
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
 }
