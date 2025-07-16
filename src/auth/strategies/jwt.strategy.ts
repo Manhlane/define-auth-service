@@ -6,8 +6,6 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly configService: ConfigService) {
-    const secret = configService.get<string>('JWT_ACCESS_SECRET');
-    console.log('JWT_ACCESS_SECRET:', secret); // Should print the secret
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,

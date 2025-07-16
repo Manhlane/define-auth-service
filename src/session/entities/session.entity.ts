@@ -23,9 +23,6 @@ export class Session {
   @Column({ type: 'timestamp', nullable: true })
   expiresAt?: Date;
 
-  @Column({ default: false })
-  isRevoked: boolean;
-
   @Column({ nullable: true })
   userAgent: string;
 
@@ -38,6 +35,6 @@ export class Session {
   @CreateDateColumn()
   createdAt: Date;
 
-  @Column({ default: 'ACTIVE' })
-  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  @Column({ default: 'active' })
+  status: 'active' | 'revoked' | 'expired';
 }

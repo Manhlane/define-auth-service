@@ -25,44 +25,43 @@ export class AuthService {
   ) { }
 
   async refreshToken(refreshToken: string, userId: string): Promise<{ accessToken: string }> {
+
     const sessions = await this.sessionRepo.find({
       where: {
-        isRevoked: false,
+        status: 'active',
         user: { id: userId },
       },
       relations: ['user'],
     });
-  
-    console.log(sessions[0].user.email)
-    let matchedSession: Session | null = null;
-  
-    for (const session of sessions) {
-      console.log(sessions[0].refreshToken)
 
+    let matchedSession: Session | null = null;
+
+    for (const session of sessions) {
       const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
       if (isMatch) {
+        console.log(isMatch)
         matchedSession = session;
         break;
       }
     }
-  
+
     if (!matchedSession || matchedSession.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token invalid or expired');
     }
-  
+
     const user = matchedSession.user;
-  
+
     const payload = {
       sub: user.id,
       email: user.email,
       roles: user.roles,
     };
-  
+
     const newAccessToken = await this.jwtService.signAsync(payload, {
       expiresIn: '15m',
       secret: this.configService.get('JWT_ACCESS_SECRET'),
     });
-  
+
     return { accessToken: newAccessToken };
   }
 
@@ -76,7 +75,7 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const existingUser = await this.usersService.findByEmail(dto.email);
+    const existingUser = await this.usersService.findByEmail(dto.email.toLowerCase());
     if (existingUser) throw new ConflictException('Email already in use');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -98,24 +97,24 @@ export class AuthService {
   async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string, location?: string) {
     const { email, password } = loginDto;
     const user = await this.usersService.findByEmail(email);
-    
+
     if (!user) {
       throw new NotFoundException(`No account found for email: ${email}`);
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
+
     if (!isPasswordValid) {
       throw new UnauthorizedException('Incorrect password');
     }
 
     const payload = { sub: user.id, email: user.email };
     const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY || '15m',
     });
 
     const refreshToken = randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + parseInt(process.env.REFRESH_TOKEN_EXPIRY_MS || '86400000'));
 
     await this.sessionService.create(
       user,
