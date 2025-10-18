@@ -33,16 +33,22 @@ export class SessionService {
   }
 
   async revokeSessionById(sessionId: string): Promise<void> {
-    await this.sessionRepo.update({ id: sessionId }, { status: 'active', expiresAt: new Date() });
+    await this.sessionRepo.update({ id: sessionId }, { status: 'revoked', expiresAt: new Date() });
   }
 
 
   async revoke(userId: string): Promise<void> {
-    await this.sessionRepo.update({ user: { id: userId } }, { status: 'revoked' });
+    await this.sessionRepo.update(
+      { user: { id: userId } },
+      { status: 'revoked', expiresAt: new Date() },
+    );
   }
 
   async revokeSingleSession(sessionId: string): Promise<void> {
-    await this.sessionRepo.update({ id: sessionId }, { status: 'revoked' });
+    await this.sessionRepo.update(
+      { id: sessionId },
+      { status: 'revoked', expiresAt: new Date() },
+    );
   }
 
   async getActiveSessions(userId: string): Promise<Session[]> {
@@ -52,4 +58,3 @@ export class SessionService {
     });
   }
 }
-

@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from 'src/users/users.service';
@@ -12,7 +18,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session } from '../session/entities/session.entity';
 
-
 @Injectable()
 export class AuthService {
   constructor(
@@ -22,10 +27,73 @@ export class AuthService {
     private readonly configService: ConfigService,
     @InjectRepository(Session)
     private readonly sessionRepo: Repository<Session>,
-  ) { }
+  ) {}
+
+  private get accessTokenSecret(): string | undefined {
+    return this.configService.get<string>('JWT_ACCESS_SECRET');
+  }
+
+  private get accessTokenExpiry(): string {
+    return this.configService.get<string>('ACCESS_TOKEN_EXPIRY') ?? '15m';
+  }
+
+  private get refreshTokenExpiryMs(): number {
+    return parseInt(this.configService.get<string>('REFRESH_TOKEN_EXPIRY_MS') ?? '86400000', 10);
+  }
+
+  private get passwordResetSecret(): string | undefined {
+    return (
+      this.configService.get<string>('JWT_PASSWORD_RESET_SECRET') ?? this.accessTokenSecret
+    );
+  }
+
+  private get passwordResetExpiry(): string {
+    return this.configService.get<string>('PASSWORD_RESET_TOKEN_EXPIRY') ?? '15m';
+  }
+
+  private get emailVerificationSecret(): string | undefined {
+    return (
+      this.configService.get<string>('JWT_EMAIL_VERIFICATION_SECRET') ?? this.accessTokenSecret
+    );
+  }
+
+  private get emailVerificationExpiry(): string {
+    return this.configService.get<string>('EMAIL_VERIFICATION_TOKEN_EXPIRY') ?? '1d';
+  }
+
+  private buildJwtOptions(secret: string | undefined, expiresIn: string) {
+    return secret ? { secret, expiresIn } : { expiresIn };
+  }
+
+  private sanitizeUser(user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isVerified: user.isVerified,
+      roles: user.roles,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  private async generateEmailVerificationToken(user: User): Promise<string> {
+    const payload = { sub: user.id, email: user.email, type: 'email-verification' };
+    return this.jwtService.signAsync(
+      payload,
+      this.buildJwtOptions(this.emailVerificationSecret, this.emailVerificationExpiry),
+    );
+  }
+
+  private async generatePasswordResetToken(user: User): Promise<string> {
+    const payload = { sub: user.id, email: user.email, type: 'password-reset' };
+    return this.jwtService.signAsync(
+      payload,
+      this.buildJwtOptions(this.passwordResetSecret, this.passwordResetExpiry),
+    );
+  }
 
   async refreshToken(refreshToken: string, userId: string): Promise<{ accessToken: string }> {
-
     const sessions = await this.sessionRepo.find({
       where: {
         status: 'active',
@@ -39,13 +107,17 @@ export class AuthService {
     for (const session of sessions) {
       const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
       if (isMatch) {
-        console.log(isMatch)
         matchedSession = session;
         break;
       }
     }
 
-    if (!matchedSession || matchedSession.expiresAt < new Date()) {
+    if (!matchedSession) {
+      throw new UnauthorizedException('Refresh token invalid or expired');
+    }
+
+    if (matchedSession.expiresAt && matchedSession.expiresAt < new Date()) {
+      await this.sessionService.revokeSessionById(matchedSession.id);
       throw new UnauthorizedException('Refresh token invalid or expired');
     }
 
@@ -57,10 +129,10 @@ export class AuthService {
       roles: user.roles,
     };
 
-    const newAccessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
-      secret: this.configService.get('JWT_ACCESS_SECRET'),
-    });
+    const newAccessToken = await this.jwtService.signAsync(
+      payload,
+      this.buildJwtOptions(this.accessTokenSecret, this.accessTokenExpiry),
+    );
 
     return { accessToken: newAccessToken };
   }
@@ -75,62 +147,191 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const existingUser = await this.usersService.findByEmail(dto.email.toLowerCase());
+    const normalizedEmail = dto.email.trim().toLowerCase();
+    const existingUser = await this.usersService.findByEmail(normalizedEmail);
     if (existingUser) throw new ConflictException('Email already in use');
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const user = await this.usersService.create({
-      email: dto.email,
+      email: normalizedEmail,
       name: dto.name,
       password: hashedPassword,
     });
 
+    const verificationToken = await this.generateEmailVerificationToken(user);
+
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      isVerified: user.isVerified,
-      roles: user.roles,
+      ...this.sanitizeUser(user),
+      verificationToken,
     };
   }
 
   async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string, location?: string) {
-    const { email, password } = loginDto;
-    const user = await this.usersService.findByEmail(email);
+    const normalizedEmail = loginDto.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
 
     if (!user) {
-      throw new NotFoundException(`No account found for email: ${email}`);
+      throw new NotFoundException(`No account found for email: ${loginDto.email}`);
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!user.password) {
+      throw new UnauthorizedException('Account is registered via a social login provider');
+    }
+
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Incorrect password');
     }
 
-    const payload = { sub: user.id, email: user.email };
-    const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRY || '15m',
-    });
+    const payload = { sub: user.id, email: user.email, roles: user.roles };
+    const accessToken = await this.jwtService.signAsync(
+      payload,
+      this.buildJwtOptions(this.accessTokenSecret, this.accessTokenExpiry),
+    );
 
     const refreshToken = randomUUID();
-    const expiresAt = new Date(Date.now() + parseInt(process.env.REFRESH_TOKEN_EXPIRY_MS || '86400000'));
+    const expiresAt = new Date(Date.now() + this.refreshTokenExpiryMs);
 
-    await this.sessionService.create(
-      user,
-      refreshToken,
-      userAgent,
-      ipAddress,
-      location,
-      expiresAt,
-    );
+    await this.sessionService.create(user, refreshToken, userAgent, ipAddress, location, expiresAt);
 
     return {
       message: 'Login successful',
       userId: user.id,
       accessToken,
       refreshToken,
+      isVerified: user.isVerified,
     };
   }
 
+  async loginWithGoogle(
+    googleUser: any,
+    userAgent?: string,
+    ipAddress?: string,
+    location?: string,
+  ) {
+    const normalizedEmail = googleUser.email.toLowerCase();
+    let user = await this.usersService.findByEmail(normalizedEmail);
+
+    if (!user) {
+      const generatedPassword = await bcrypt.hash(randomUUID(), 10);
+      const name = `${googleUser.firstName ?? ''} ${googleUser.lastName ?? ''}`.trim();
+      user = await this.usersService.create({
+        email: normalizedEmail,
+        name: name || googleUser.email,
+        password: generatedPassword,
+        isVerified: true,
+        roles: googleUser.roles ?? ['user'],
+      });
+    }
+
+    const payload = { sub: user.id, email: user.email, roles: user.roles };
+    const userProfile = this.sanitizeUser(user);
+
+    const accessToken = await this.jwtService.signAsync(
+      payload,
+      this.buildJwtOptions(this.accessTokenSecret, this.accessTokenExpiry),
+    );
+
+    const refreshToken = randomUUID();
+    const expiresAt = new Date(Date.now() + this.refreshTokenExpiryMs);
+
+    await this.sessionService.create(user, refreshToken, userAgent, ipAddress, location, expiresAt);
+
+    return {
+      message: 'Google login successful',
+      userId: user.id,
+      accessToken,
+      refreshToken,
+      user: userProfile,
+    };
+  }
+
+  async requestPasswordReset(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+
+    if (!user) {
+      return {
+        message: 'If an account exists for this email, reset instructions have been sent.',
+      };
+    }
+
+    const resetToken = await this.generatePasswordResetToken(user);
+
+    return {
+      message: 'Password reset instructions generated successfully.',
+      resetToken,
+      expiresIn: this.passwordResetExpiry,
+    };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException('Password changes are not available for this account');
+    }
+
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.usersService.updateUser(user.id, { password: hashedPassword });
+    await this.sessionService.revoke(user.id);
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    let payload: any;
+
+    try {
+      const secret = this.emailVerificationSecret;
+      payload = await this.jwtService.verifyAsync(
+        token,
+        secret ? { secret } : undefined,
+      );
+    } catch (error) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    if (payload.type !== 'email-verification' || !payload.sub) {
+      throw new BadRequestException('Invalid email verification token');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user) {
+      throw new NotFoundException('User account not found');
+    }
+
+    if (!user.isVerified) {
+      await this.usersService.updateUser(user.id, { isVerified: true });
+    }
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.sanitizeUser(user);
+  }
+
+  async getUserRoles(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return { roles: user.roles };
+  }
 }

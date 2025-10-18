@@ -1,18 +1,24 @@
-import { Body, Controller, Get, Post, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards, Req, Res, Logger } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RegisterDto } from './dto/register.dto';
-import { UsersService } from 'src/users/users.service';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { AuthGuard } from '@nestjs/passport';
+import { Request, Response } from 'express';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService, private readonly usersService: UsersService) { }
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
@@ -42,7 +48,7 @@ export class AuthController {
   @Post('logout')
   @ApiOperation({ summary: 'Log out user and clear token' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  @ApiBody({ type: LogoutDto})
+  @ApiBody({ type: LogoutDto })
   async logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto.userId);
   }
@@ -50,37 +56,83 @@ export class AuthController {
   @Post('forgot-password')
   @ApiOperation({ summary: 'Send password reset instructions to user email' })
   @ApiResponse({ status: 200, description: 'Reset link sent' })
-  async forgotPassword(@Body() body: any) {
-    //return this.authService.sendResetEmail(body.email);
+  @ApiBody({ type: ForgotPasswordDto })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto.email);
   }
 
   @Post('change-password')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Change password for authenticated user' })
   @ApiResponse({ status: 200, description: 'Password changed successfully' })
-  async changePassword(@Body() body: any) {
-    //return this.authService.changePassword(body);
+  @ApiBody({ type: ChangePasswordDto })
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return { message: 'Password changed successfully' };
   }
 
   @Post('verify-email')
   @ApiOperation({ summary: 'Verify user email using token' })
   @ApiResponse({ status: 200, description: 'Email verified successfully' })
-  async verifyEmail(@Body() body: any) {
-    // return this.authService.verifyEmail(body.token);
+  @ApiBody({ type: VerifyEmailDto })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    await this.authService.verifyEmail(dto.token);
+    return { message: 'Email verified successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiOperation({ summary: 'Get current authenticated user info' })
   @ApiResponse({ status: 200, description: 'User info returned' })
-  async me(@Req() req) {
-    // return req.user;
+  async me(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.authService.getProfile(user.id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('roles')
   @ApiOperation({ summary: 'Get roles/permissions of authenticated user' })
   @ApiResponse({ status: 200, description: 'User roles returned' })
-  async roles(@Req() req) {
-    // return this.authService.getUserRoles(req.user.id);
+  async roles(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.authService.getUserRoles(user.id);
   }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  async googleAuth(): Promise<void> {
+    return;
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
+    console.log(req);
+    console.log(res)
+    const result = await this.authService.loginWithGoogle(req.user);
+    
+
+    if (result.user) {
+      this.logger.log(`Google OAuth user authenticated: ${JSON.stringify(result.user)}`);
+    }
+
+    const dashboardUrl = new URL('http://localhost:3000/dashboard');
+
+    if (result.user) {
+      dashboardUrl.searchParams.set('userId', result.user.id);
+      if (result.user.email) {
+        dashboardUrl.searchParams.set('email', result.user.email);
+      }
+      if (result.user.name) {
+        dashboardUrl.searchParams.set('name', result.user.name);
+      }
+    }
+
+    dashboardUrl.searchParams.set('accessToken', result.accessToken);
+    dashboardUrl.searchParams.set('refreshToken', result.refreshToken);
+
+    return res.redirect(dashboardUrl.toString());
+  }
+
 }
