@@ -43,31 +43,42 @@ export class AuthService {
   }
 
   private get refreshTokenExpiryMs(): number {
-    return parseInt(this.configService.get<string>('REFRESH_TOKEN_EXPIRY_MS') ?? '86400000', 10);
+    return parseInt(
+      this.configService.get<string>('REFRESH_TOKEN_EXPIRY_MS') ?? '86400000',
+      10,
+    );
   }
 
   private get passwordResetSecret(): string | undefined {
     return (
-      this.configService.get<string>('JWT_PASSWORD_RESET_SECRET') ?? this.accessTokenSecret
+      this.configService.get<string>('JWT_PASSWORD_RESET_SECRET') ??
+      this.accessTokenSecret
     );
   }
 
   private get passwordResetExpiry(): string {
-    return this.configService.get<string>('PASSWORD_RESET_TOKEN_EXPIRY') ?? '15m';
+    return (
+      this.configService.get<string>('PASSWORD_RESET_TOKEN_EXPIRY') ?? '15m'
+    );
   }
 
   private get emailVerificationSecret(): string | undefined {
     return (
-      this.configService.get<string>('JWT_EMAIL_VERIFICATION_SECRET') ?? this.accessTokenSecret
+      this.configService.get<string>('JWT_EMAIL_VERIFICATION_SECRET') ??
+      this.accessTokenSecret
     );
   }
 
   private get emailVerificationExpiry(): string {
-    return this.configService.get<string>('EMAIL_VERIFICATION_TOKEN_EXPIRY') ?? '1d';
+    return (
+      this.configService.get<string>('EMAIL_VERIFICATION_TOKEN_EXPIRY') ?? '1d'
+    );
   }
 
   private get appBaseUrl(): string {
-    return this.configService.get<string>('APP_BASE_URL') ?? 'http://localhost:3000';
+    return (
+      this.configService.get<string>('APP_BASE_URL') ?? 'http://localhost:3000'
+    );
   }
 
   private buildJwtOptions(secret: string | undefined, expiresIn: string) {
@@ -87,10 +98,17 @@ export class AuthService {
   }
 
   private async generateEmailVerificationToken(user: User): Promise<string> {
-    const payload = { sub: user.id, email: user.email, type: 'email-verification' };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      type: 'email-verification',
+    };
     return this.jwtService.signAsync(
       payload,
-      this.buildJwtOptions(this.emailVerificationSecret, this.emailVerificationExpiry),
+      this.buildJwtOptions(
+        this.emailVerificationSecret,
+        this.emailVerificationExpiry,
+      ),
     );
   }
 
@@ -102,7 +120,10 @@ export class AuthService {
     );
   }
 
-  async refreshToken(refreshToken: string, userId: string): Promise<{ accessToken: string }> {
+  async refreshToken(
+    refreshToken: string,
+    userId: string,
+  ): Promise<{ accessToken: string }> {
     const sessions = await this.sessionRepo.find({
       where: {
         status: 'active',
@@ -177,7 +198,9 @@ export class AuthService {
         verificationUrl,
       })
       .catch((error) =>
-        this.logger.warn(`Failed to enqueue welcome email for ${user.email}: ${error}`),
+        this.logger.warn(
+          `Failed to enqueue welcome email for ${user.email}: ${error}`,
+        ),
       );
 
     return {
@@ -186,19 +209,31 @@ export class AuthService {
     };
   }
 
-  async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string, location?: string) {
+  async login(
+    loginDto: LoginDto,
+    userAgent?: string,
+    ipAddress?: string,
+    location?: string,
+  ) {
     const normalizedEmail = loginDto.email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
 
     if (!user) {
-      throw new NotFoundException(`No account found for email: ${loginDto.email}`);
+      throw new NotFoundException(
+        `No account found for email: ${loginDto.email}`,
+      );
     }
 
     if (!user.password) {
-      throw new UnauthorizedException('Account is registered via a social login provider');
+      throw new UnauthorizedException(
+        'Account is registered via a social login provider',
+      );
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password,
+    );
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Incorrect password');
@@ -213,7 +248,14 @@ export class AuthService {
     const refreshToken = randomUUID();
     const expiresAt = new Date(Date.now() + this.refreshTokenExpiryMs);
 
-    await this.sessionService.create(user, refreshToken, userAgent, ipAddress, location, expiresAt);
+    await this.sessionService.create(
+      user,
+      refreshToken,
+      userAgent,
+      ipAddress,
+      location,
+      expiresAt,
+    );
 
     return {
       message: 'Login successful',
@@ -236,7 +278,8 @@ export class AuthService {
 
     if (!user) {
       const generatedPassword = await bcrypt.hash(randomUUID(), 10);
-      const name = `${googleUser.firstName ?? ''} ${googleUser.lastName ?? ''}`.trim();
+      const name =
+        `${googleUser.firstName ?? ''} ${googleUser.lastName ?? ''}`.trim();
       user = await this.usersService.create({
         email: normalizedEmail,
         name: name || googleUser.email,
@@ -258,7 +301,14 @@ export class AuthService {
     const refreshToken = randomUUID();
     const expiresAt = new Date(Date.now() + this.refreshTokenExpiryMs);
 
-    await this.sessionService.create(user, refreshToken, userAgent, ipAddress, location, expiresAt);
+    await this.sessionService.create(
+      user,
+      refreshToken,
+      userAgent,
+      ipAddress,
+      location,
+      expiresAt,
+    );
 
     if (isFirstSocialLogin) {
       this.notificationsClient
@@ -267,7 +317,9 @@ export class AuthService {
           name: user.name,
         })
         .catch((error) =>
-          this.logger.warn(`Failed to enqueue social welcome email for ${user.email}: ${error}`),
+          this.logger.warn(
+            `Failed to enqueue social welcome email for ${user.email}: ${error}`,
+          ),
         );
     }
 
@@ -286,7 +338,8 @@ export class AuthService {
 
     if (!user) {
       return {
-        message: 'If an account exists for this email, reset instructions have been sent.',
+        message:
+          'If an account exists for this email, reset instructions have been sent.',
       };
     }
 
@@ -305,7 +358,8 @@ export class AuthService {
 
     if (!user) {
       return {
-        message: 'If an account exists for this email, verification details have been sent.',
+        message:
+          'If an account exists for this email, verification details have been sent.',
       };
     }
 
@@ -319,14 +373,20 @@ export class AuthService {
     };
   }
 
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     const user = await this.usersService.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     if (!user.password) {
-      throw new UnauthorizedException('Password changes are not available for this account');
+      throw new UnauthorizedException(
+        'Password changes are not available for this account',
+      );
     }
 
     const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
@@ -335,7 +395,9 @@ export class AuthService {
     }
 
     if (currentPassword === newPassword) {
-      throw new BadRequestException('New password must be different from the current password');
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -394,7 +456,9 @@ export class AuthService {
       url.searchParams.set('token', token);
       return url.toString();
     } catch (error) {
-      this.logger.warn(`Failed to build verification URL, falling back to token only: ${error}`);
+      this.logger.warn(
+        `Failed to build verification URL, falling back to token only: ${error}`,
+      );
       return token;
     }
   }

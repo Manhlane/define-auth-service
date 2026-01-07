@@ -173,7 +173,11 @@ describe('AuthService', () => {
       usersService.findByEmail.mockResolvedValue(mockUser());
 
       await expect(
-        service.register({ email: 'existing@example.com', name: 'Bob', password: 'test' }),
+        service.register({
+          email: 'existing@example.com',
+          name: 'Bob',
+          password: 'test',
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });
@@ -224,7 +228,9 @@ describe('AuthService', () => {
 
     it('should throw UnauthorizedException for incorrect password', async () => {
       const hashedPassword = await bcrypt.hash('Correct1!', 10);
-      usersService.findByEmail.mockResolvedValue(mockUser({ password: hashedPassword }));
+      usersService.findByEmail.mockResolvedValue(
+        mockUser({ password: hashedPassword }),
+      );
 
       await expect(
         service.login({ email: 'user@example.com', password: 'Wrong!' }),
@@ -234,7 +240,11 @@ describe('AuthService', () => {
 
   describe('loginWithGoogle', () => {
     it('creates a new user, issues tokens, and sends welcome email on first social login', async () => {
-      const googleUser = { email: 'newuser@example.com', firstName: 'New', lastName: 'User' };
+      const googleUser = {
+        email: 'newuser@example.com',
+        firstName: 'New',
+        lastName: 'User',
+      };
       usersService.findByEmail.mockResolvedValueOnce(null);
       const createdUser = mockUser({
         id: 'new-id',
@@ -247,9 +257,16 @@ describe('AuthService', () => {
       jwtService.signAsync.mockResolvedValueOnce('google-access-token');
       sessionService.create.mockResolvedValue({} as any);
 
-      const result = await service.loginWithGoogle(googleUser, 'agent', '2.2.2.2', 'Mars');
+      const result = await service.loginWithGoogle(
+        googleUser,
+        'agent',
+        '2.2.2.2',
+        'Mars',
+      );
 
-      expect(usersService.findByEmail).toHaveBeenCalledWith('newuser@example.com');
+      expect(usersService.findByEmail).toHaveBeenCalledWith(
+        'newuser@example.com',
+      );
       expect(usersService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'newuser@example.com',
@@ -259,7 +276,11 @@ describe('AuthService', () => {
         }),
       );
       expect(jwtService.signAsync).toHaveBeenCalledWith(
-        { sub: createdUser.id, email: createdUser.email, roles: createdUser.roles },
+        {
+          sub: createdUser.id,
+          email: createdUser.email,
+          roles: createdUser.roles,
+        },
         { secret: 'access-secret', expiresIn: '15m' },
       );
       expect(sessionService.create).toHaveBeenCalledWith(
@@ -285,7 +306,11 @@ describe('AuthService', () => {
     });
 
     it('skips welcome email for returning social users', async () => {
-      const existingUser = mockUser({ id: 'existing', email: 'return@example.com', isVerified: true });
+      const existingUser = mockUser({
+        id: 'existing',
+        email: 'return@example.com',
+        isVerified: true,
+      });
       usersService.findByEmail.mockResolvedValue(existingUser);
       jwtService.signAsync.mockResolvedValueOnce('existing-access-token');
       sessionService.create.mockResolvedValue({} as any);
@@ -323,7 +348,11 @@ describe('AuthService', () => {
         relations: ['user'],
       });
       expect(jwtService.signAsync).toHaveBeenCalledWith(
-        { sub: session.user.id, email: session.user.email, roles: session.user.roles },
+        {
+          sub: session.user.id,
+          email: session.user.email,
+          roles: session.user.roles,
+        },
         { secret: 'access-secret', expiresIn: '15m' },
       );
       expect(result).toEqual({ accessToken: 'new-access-token' });
@@ -332,9 +361,9 @@ describe('AuthService', () => {
     it('should throw when refresh token does not match any session', async () => {
       sessionRepo.find.mockResolvedValue([]);
 
-      await expect(service.refreshToken('plain', 'user-id')).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
+      await expect(
+        service.refreshToken('plain', 'user-id'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 
@@ -345,7 +374,8 @@ describe('AuthService', () => {
       const result = await service.requestPasswordReset('ghost@example.com');
 
       expect(result).toEqual({
-        message: 'If an account exists for this email, reset instructions have been sent.',
+        message:
+          'If an account exists for this email, reset instructions have been sent.',
       });
       expect(jwtService.signAsync).not.toHaveBeenCalled();
     });
@@ -371,7 +401,9 @@ describe('AuthService', () => {
   describe('changePassword', () => {
     it('should update password and revoke sessions', async () => {
       const hashedPassword = await bcrypt.hash('OldPass1!', 10);
-      usersService.findById.mockResolvedValue(mockUser({ password: hashedPassword }));
+      usersService.findById.mockResolvedValue(
+        mockUser({ password: hashedPassword }),
+      );
 
       await service.changePassword('user-id', 'OldPass1!', 'NewPass1!');
 
@@ -386,7 +418,9 @@ describe('AuthService', () => {
 
     it('should throw UnauthorizedException for incorrect current password', async () => {
       const hashedPassword = await bcrypt.hash('Correct1!', 10);
-      usersService.findById.mockResolvedValue(mockUser({ password: hashedPassword }));
+      usersService.findById.mockResolvedValue(
+        mockUser({ password: hashedPassword }),
+      );
 
       await expect(
         service.changePassword('user-id', 'WrongPass!', 'NewPass1!'),
@@ -404,19 +438,28 @@ describe('AuthService', () => {
 
       await service.verifyEmail('token');
 
-      expect(usersService.updateUser).toHaveBeenCalledWith('user-id', { isVerified: true });
+      expect(usersService.updateUser).toHaveBeenCalledWith('user-id', {
+        isVerified: true,
+      });
     });
 
     it('should throw BadRequestException when token invalid', async () => {
       jwtService.verifyAsync.mockRejectedValueOnce(new Error('invalid'));
 
-      await expect(service.verifyEmail('bad-token')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.verifyEmail('bad-token')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException when token type mismatch', async () => {
-      jwtService.verifyAsync.mockResolvedValueOnce({ sub: 'user-id', type: 'wrong' });
+      jwtService.verifyAsync.mockResolvedValueOnce({
+        sub: 'user-id',
+        type: 'wrong',
+      });
 
-      await expect(service.verifyEmail('token')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.verifyEmail('token')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
   });
 
@@ -448,7 +491,9 @@ describe('AuthService', () => {
     it('should throw NotFoundException when user missing for profile', async () => {
       usersService.findById.mockResolvedValue(null);
 
-      await expect(service.getProfile('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.getProfile('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

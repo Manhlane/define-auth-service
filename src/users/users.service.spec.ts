@@ -46,11 +46,17 @@ describe('UsersService', () => {
 
     await service.findByEmail('USER@Example.COM');
 
-    expect(repository.findOne).toHaveBeenCalledWith({ where: { email: 'user@example.com' } });
+    expect(repository.findOne).toHaveBeenCalledWith({
+      where: { email: 'user@example.com' },
+    });
   });
 
   it('createUser should lower-case email before persisting', async () => {
-    const payload = { email: 'Camel@Example.com', name: 'Camel', password: 'hash' } as Partial<User>;
+    const payload = {
+      email: 'Camel@Example.com',
+      name: 'Camel',
+      password: 'hash',
+    } as Partial<User>;
     const entity = { id: 'id', ...payload, email: 'camel@example.com' } as User;
     repository.create.mockReturnValue(entity);
     repository.save.mockResolvedValue(entity);
@@ -68,7 +74,11 @@ describe('UsersService', () => {
     repository.findOne.mockResolvedValue({ id: 'existing' } as User);
 
     await expect(
-      service.create({ email: 'taken@example.com', name: 'Taken', password: 'hash' }),
+      service.create({
+        email: 'taken@example.com',
+        name: 'Taken',
+        password: 'hash',
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 

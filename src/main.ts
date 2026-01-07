@@ -14,12 +14,12 @@ async function bootstrap() {
     .filter(Boolean)
     .filter((value, index, self) => self.indexOf(value) === index);
 
-  app.enableCors({    
-    origin: allowedOrigins,                                // exact origins, not '*'
-    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+  app.enableCors({
+    origin: allowedOrigins, // exact origins, not '*'
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,                                    // set true ONLY if you use cookies & fetch(..., { credentials: 'include' })
-    maxAge: 86400,                                          // cache preflight
+    credentials: false, // set true ONLY if you use cookies & fetch(..., { credentials: 'include' })
+    maxAge: 86400, // cache preflight
   });
 
   const config = new DocumentBuilder()

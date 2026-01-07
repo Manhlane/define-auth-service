@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards, Req, Res, Logger } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  Req,
+  Res,
+  Logger,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -11,7 +20,6 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
-
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -64,7 +72,10 @@ export class AuthController {
 
   @Post('resend-verification')
   @ApiOperation({ summary: 'Generate a fresh email verification token' })
-  @ApiResponse({ status: 200, description: 'Verification token generated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verification token generated successfully',
+  })
   @ApiBody({ type: ResendVerificationDto })
   async resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerification(dto.email);
@@ -77,7 +88,11 @@ export class AuthController {
   @ApiBody({ type: ChangePasswordDto })
   async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request) {
     const user = req.user as { id: string };
-    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
     return { message: 'Password changed successfully' };
   }
 
@@ -118,10 +133,11 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
     const result = await this.authService.loginWithGoogle(req.user);
-    
 
     if (result.user) {
-      this.logger.log(`Google OAuth user authenticated: ${JSON.stringify(result.user)}`);
+      this.logger.log(
+        `Google OAuth user authenticated: ${JSON.stringify(result.user)}`,
+      );
     }
 
     const dashboardUrl = new URL('http://localhost:3000/dashboard');
@@ -141,5 +157,4 @@ export class AuthController {
 
     return res.redirect(dashboardUrl.toString());
   }
-
 }

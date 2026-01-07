@@ -12,7 +12,7 @@ import { SessionModule } from './session/session.module';
     TypeOrmModule.forRootAsync(typeOrmConfig),
     AuthModule,
     UsersModule,
-    SessionModule
+    SessionModule,
   ],
 })
 export class AppModule {}

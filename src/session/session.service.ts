@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session } from './entities/session.entity';
@@ -10,7 +10,7 @@ export class SessionService {
   constructor(
     @InjectRepository(Session)
     private readonly sessionRepo: Repository<Session>,
-  ) { }
+  ) {}
 
   async create(
     user: User,
@@ -33,9 +33,11 @@ export class SessionService {
   }
 
   async revokeSessionById(sessionId: string): Promise<void> {
-    await this.sessionRepo.update({ id: sessionId }, { status: 'revoked', expiresAt: new Date() });
+    await this.sessionRepo.update(
+      { id: sessionId },
+      { status: 'revoked', expiresAt: new Date() },
+    );
   }
-
 
   async revoke(userId: string): Promise<void> {
     await this.sessionRepo.update(
@@ -53,7 +55,7 @@ export class SessionService {
 
   async getActiveSessions(userId: string): Promise<Session[]> {
     return this.sessionRepo.find({
-      where: { user: { id: userId }, status: "active" },
+      where: { user: { id: userId }, status: 'active' },
       order: { createdAt: 'DESC' },
     });
   }
