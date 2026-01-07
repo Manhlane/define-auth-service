@@ -10,9 +10,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Session } from 'src/session/entities/session.entity';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { NotificationsClient } from 'src/notifications/notifications.client';
 
 @Module({
   imports: [
+    ConfigModule,
     UsersModule,
     SessionModule,
     TypeOrmModule.forFeature([Session]),
@@ -25,7 +27,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, GoogleStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, NotificationsClient],
   controllers: [AuthController],
 })
 export class AuthModule {}

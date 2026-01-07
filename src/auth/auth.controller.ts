@@ -5,12 +5,12 @@ import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { LogoutDto } from './dto/logout.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 
 
 @ApiTags('Auth')
@@ -46,11 +46,12 @@ export class AuthController {
   }
 
   @Post('logout')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Log out user and clear token' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  @ApiBody({ type: LogoutDto })
-  async logout(@Body() dto: LogoutDto) {
-    return this.authService.logout(dto.userId);
+  async logout(@Req() req: Request) {
+    const user = req.user as { id: string };
+    return this.authService.logout(user.id);
   }
 
   @Post('forgot-password')
@@ -59,6 +60,14 @@ export class AuthController {
   @ApiBody({ type: ForgotPasswordDto })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('resend-verification')
+  @ApiOperation({ summary: 'Generate a fresh email verification token' })
+  @ApiResponse({ status: 200, description: 'Verification token generated successfully' })
+  @ApiBody({ type: ResendVerificationDto })
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerification(dto.email);
   }
 
   @Post('change-password')
@@ -108,8 +117,6 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-    console.log(req);
-    console.log(res)
     const result = await this.authService.loginWithGoogle(req.user);
     
 

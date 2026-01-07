@@ -56,7 +56,7 @@ TypeScript NestJS project that centralises authentication concerns for the Defin
 - `POST /auth/register` – registers a new user. The response includes a `verificationToken` that can be emailed to the user and later confirmed via `/auth/verify-email`.
 - `POST /auth/login` – authenticates email/password users, returning both access and refresh tokens alongside the verification flag.
 - `POST /auth/refresh-token` – exchanges a valid refresh token for a fresh access token. Refresh tokens are hashed and matched against active database sessions.
-- `POST /auth/logout` – revokes all active sessions for a user ID (useful for account-level sign out).
+- `POST /auth/logout` – revokes all active sessions for the authenticated user (send the access token as the `Authorization` bearer header).
 - `POST /auth/forgot-password` – generates a signed reset token for downstream delivery. For convenience the token is returned in the response during development.
 - `POST /auth/change-password` – protected route that validates the existing password, enforces change, and revokes outstanding sessions.
 - `POST /auth/verify-email` – validates an email verification token and marks the user as verified.

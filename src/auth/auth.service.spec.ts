@@ -13,6 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { NotificationsClient } from 'src/notifications/notifications.client';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -30,6 +31,7 @@ describe('AuthService', () => {
   }>;
   let configService: jest.Mocked<{ get: jest.Mock }>;
   let sessionRepo: jest.Mocked<{ find: jest.Mock }>;
+  let notificationsClient: jest.Mocked<{ sendWelcomeEmail: jest.Mock }>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -71,6 +73,12 @@ describe('AuthService', () => {
             find: jest.fn(),
           },
         },
+        {
+          provide: NotificationsClient,
+          useValue: {
+            sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -80,6 +88,7 @@ describe('AuthService', () => {
     sessionService = module.get(SessionService);
     configService = module.get(ConfigService);
     sessionRepo = module.get(getRepositoryToken(Session));
+    notificationsClient = module.get(NotificationsClient);
 
     configService.get.mockImplementation((key: string) => {
       switch (key) {
@@ -97,6 +106,8 @@ describe('AuthService', () => {
           return 'verify-secret';
         case 'EMAIL_VERIFICATION_TOKEN_EXPIRY':
           return '1d';
+        case 'APP_BASE_URL':
+          return 'http://localhost:3000';
         default:
           return undefined;
       }
@@ -149,6 +160,13 @@ describe('AuthService', () => {
         verificationToken: 'verification-token',
       });
       expect(result).not.toHaveProperty('password');
+      expect(notificationsClient.sendWelcomeEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: user.email,
+          name: user.name,
+          verificationUrl: expect.stringContaining('verify-email'),
+        }),
+      );
     });
 
     it('should throw when email already exists', async () => {
@@ -214,17 +232,88 @@ describe('AuthService', () => {
     });
   });
 
+  describe('loginWithGoogle', () => {
+    it('creates a new user, issues tokens, and sends welcome email on first social login', async () => {
+      const googleUser = { email: 'newuser@example.com', firstName: 'New', lastName: 'User' };
+      usersService.findByEmail.mockResolvedValueOnce(null);
+      const createdUser = mockUser({
+        id: 'new-id',
+        email: 'newuser@example.com',
+        name: 'New User',
+        password: 'hashed',
+        isVerified: true,
+      });
+      usersService.create.mockResolvedValue(createdUser);
+      jwtService.signAsync.mockResolvedValueOnce('google-access-token');
+      sessionService.create.mockResolvedValue({} as any);
+
+      const result = await service.loginWithGoogle(googleUser, 'agent', '2.2.2.2', 'Mars');
+
+      expect(usersService.findByEmail).toHaveBeenCalledWith('newuser@example.com');
+      expect(usersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'newuser@example.com',
+          name: 'New User',
+          password: expect.any(String),
+          isVerified: true,
+        }),
+      );
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        { sub: createdUser.id, email: createdUser.email, roles: createdUser.roles },
+        { secret: 'access-secret', expiresIn: '15m' },
+      );
+      expect(sessionService.create).toHaveBeenCalledWith(
+        createdUser,
+        expect.any(String),
+        'agent',
+        '2.2.2.2',
+        'Mars',
+        expect.any(Date),
+      );
+      expect(notificationsClient.sendWelcomeEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: createdUser.email,
+          name: createdUser.name,
+        }),
+      );
+      expect(result).toMatchObject({
+        message: 'Google login successful',
+        userId: createdUser.id,
+        accessToken: 'google-access-token',
+        user: expect.objectContaining({ email: createdUser.email }),
+      });
+    });
+
+    it('skips welcome email for returning social users', async () => {
+      const existingUser = mockUser({ id: 'existing', email: 'return@example.com', isVerified: true });
+      usersService.findByEmail.mockResolvedValue(existingUser);
+      jwtService.signAsync.mockResolvedValueOnce('existing-access-token');
+      sessionService.create.mockResolvedValue({} as any);
+
+      const result = await service.loginWithGoogle(
+        { email: 'return@example.com', firstName: 'Old', lastName: 'User' },
+        'agent',
+        '3.3.3.3',
+        'Venus',
+      );
+
+      expect(usersService.create).not.toHaveBeenCalled();
+      expect(notificationsClient.sendWelcomeEmail).not.toHaveBeenCalled();
+      expect(result.accessToken).toBe('existing-access-token');
+    });
+  });
+
   describe('refreshToken', () => {
     it('should issue new access token for valid refresh session', async () => {
+      const hashed = await bcrypt.hash('plain-refresh', 10);
       const session = {
         id: 'session-id',
-        refreshToken: 'hashed-token',
+        refreshToken: hashed,
         expiresAt: new Date(Date.now() + 10000),
         status: 'active',
         user: mockUser({ roles: ['user'] }),
       };
       sessionRepo.find.mockResolvedValue([session]);
-      jest.spyOn(bcrypt as any, 'compare').mockResolvedValueOnce(true);
       jwtService.signAsync.mockResolvedValueOnce('new-access-token');
 
       const result = await service.refreshToken('plain-refresh', 'user-id');
