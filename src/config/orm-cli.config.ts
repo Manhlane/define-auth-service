@@ -4,6 +4,9 @@ import { join } from 'path';
 
 config(); // Loads .env
 
+const entitiesGlob = join(__dirname, '..', '**', '*.entity.{ts,js}');
+const migrationsGlob = join(__dirname, '..', 'migrations', '*{.ts,.js}');
+
 const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
@@ -11,8 +14,8 @@ const AppDataSource = new DataSource({
     rejectUnauthorized: false,
   },
   synchronize: false,
-  entities: ['src/**/*.entity.{ts,js}'],
-  migrations: ['src/migrations/*{.ts,.js}'],
+  entities: [entitiesGlob],
+  migrations: [migrationsGlob],
 });
 
 export default AppDataSource;

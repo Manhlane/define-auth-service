@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,9 +18,12 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session } from '../session/entities/session.entity';
+import { NotificationsClient } from 'src/notifications/notifications.client';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -27,6 +31,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     @InjectRepository(Session)
     private readonly sessionRepo: Repository<Session>,
+    private readonly notificationsClient: NotificationsClient,
   ) {}
 
   private get accessTokenSecret(): string | undefined {
@@ -59,6 +64,10 @@ export class AuthService {
 
   private get emailVerificationExpiry(): string {
     return this.configService.get<string>('EMAIL_VERIFICATION_TOKEN_EXPIRY') ?? '1d';
+  }
+
+  private get appBaseUrl(): string {
+    return this.configService.get<string>('APP_BASE_URL') ?? 'http://localhost:3000';
   }
 
   private buildJwtOptions(secret: string | undefined, expiresIn: string) {
@@ -159,6 +168,17 @@ export class AuthService {
     });
 
     const verificationToken = await this.generateEmailVerificationToken(user);
+    const verificationUrl = this.buildVerificationUrl(verificationToken);
+
+    this.notificationsClient
+      .sendWelcomeEmail({
+        email: user.email,
+        name: user.name,
+        verificationUrl,
+      })
+      .catch((error) =>
+        this.logger.warn(`Failed to enqueue welcome email for ${user.email}: ${error}`),
+      );
 
     return {
       ...this.sanitizeUser(user),
@@ -212,6 +232,7 @@ export class AuthService {
   ) {
     const normalizedEmail = googleUser.email.toLowerCase();
     let user = await this.usersService.findByEmail(normalizedEmail);
+    let isFirstSocialLogin = false;
 
     if (!user) {
       const generatedPassword = await bcrypt.hash(randomUUID(), 10);
@@ -223,6 +244,7 @@ export class AuthService {
         isVerified: true,
         roles: googleUser.roles ?? ['user'],
       });
+      isFirstSocialLogin = true;
     }
 
     const payload = { sub: user.id, email: user.email, roles: user.roles };
@@ -237,6 +259,17 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + this.refreshTokenExpiryMs);
 
     await this.sessionService.create(user, refreshToken, userAgent, ipAddress, location, expiresAt);
+
+    if (isFirstSocialLogin) {
+      this.notificationsClient
+        .sendWelcomeEmail({
+          email: user.email,
+          name: user.name,
+        })
+        .catch((error) =>
+          this.logger.warn(`Failed to enqueue social welcome email for ${user.email}: ${error}`),
+        );
+    }
 
     return {
       message: 'Google login successful',
@@ -263,6 +296,26 @@ export class AuthService {
       message: 'Password reset instructions generated successfully.',
       resetToken,
       expiresIn: this.passwordResetExpiry,
+    };
+  }
+
+  async resendVerification(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+
+    if (!user) {
+      return {
+        message: 'If an account exists for this email, verification details have been sent.',
+      };
+    }
+
+    const verificationToken = await this.generateEmailVerificationToken(user);
+
+    return {
+      message: user.isVerified
+        ? 'Account already verified. Verification link regenerated.'
+        : 'Verification link generated successfully.',
+      verificationToken,
     };
   }
 
@@ -333,5 +386,16 @@ export class AuthService {
     }
 
     return { roles: user.roles };
+  }
+
+  private buildVerificationUrl(token: string): string {
+    try {
+      const url = new URL('/verify-email', this.appBaseUrl);
+      url.searchParams.set('token', token);
+      return url.toString();
+    } catch (error) {
+      this.logger.warn(`Failed to build verification URL, falling back to token only: ${error}`);
+      return token;
+    }
   }
 }
