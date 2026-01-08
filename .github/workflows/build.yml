@@ -61,5 +61,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.actor }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.actor }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${{ env.IMAGE_NAME }}:latest
