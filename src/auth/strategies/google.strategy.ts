@@ -1,14 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, VerifyCallback } from 'passport-google-oauth20';
-
-const googleEnabled = process.env.ENABLE_GOOGLE_AUTH === 'true';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor() {
+    const isGoogleEnabled = process.env.ENABLE_GOOGLE_AUTH === 'true';
 
-    if(!googleEnabled){
+    if (!isGoogleEnabled) {
       super({});
       return;
     }
