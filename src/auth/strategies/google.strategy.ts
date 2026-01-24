@@ -8,7 +8,12 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const isGoogleEnabled = process.env.ENABLE_GOOGLE_AUTH === 'true';
 
     if (!isGoogleEnabled) {
-      super({});
+      super({
+        clientID: 'disabled',
+        clientSecret: 'disabled',
+        callbackURL: 'http://localhost/auth/google/callback',
+        scope: ['email', 'profile'],
+      });
       return;
     }
 
