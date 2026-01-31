@@ -18,7 +18,7 @@ jobs:
     env:
       IMAGE_NAME: ghcr.io/manhlane/define-auth-service
       IMAGE_TAG: latest
-      CONTAINER_NAME: define-auth-service
+      CONTAINER_NAME: define-auth
       APP_PORT: "3000"
       CONTAINER_PORT: "3000"
       ENV_FILE_PATH: "/home/ec2-user/define-auth.dev.env"
