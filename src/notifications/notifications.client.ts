@@ -15,7 +15,7 @@ export class NotificationsClient {
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl = this.normalizeBaseUrl(
-      this.configService.get<string>('NOTIFICATIONS_SERVICE_URL') ??
+      this.configService.get<string>('NOTIFICATIONS_URL') ??
         'http://localhost:3005/notifications',
     );
     const appBase =
