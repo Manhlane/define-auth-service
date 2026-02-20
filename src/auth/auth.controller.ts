@@ -28,6 +28,47 @@ export class AuthController {
 
   constructor(private readonly authService: AuthService) {}
 
+  private extractRequestMetadata(req: Request): {
+    userAgent?: string;
+    ipAddress?: string;
+    location?: string;
+  } {
+    const forwarded = req.headers['x-forwarded-for'];
+    const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const ipAddress =
+      forwardedValue?.split(',')[0]?.trim() ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      undefined;
+    const userAgent = req.headers['user-agent'];
+
+    const country =
+      req.headers['x-vercel-ip-country'] ||
+      req.headers['cf-ipcountry'] ||
+      req.headers['cloudfront-viewer-country'] ||
+      req.headers['x-country-code'] ||
+      req.headers['x-country'];
+    const region =
+      req.headers['x-vercel-ip-region'] ||
+      req.headers['x-region'] ||
+      req.headers['x-country-region'];
+    const city =
+      req.headers['x-vercel-ip-city'] ||
+      req.headers['x-city'] ||
+      req.headers['x-geo-city'];
+
+    const locationParts = [city, region, country]
+      .filter((value) => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => (value as string).trim());
+    const location = locationParts.length ? locationParts.join(', ') : undefined;
+
+    return {
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+      ipAddress,
+      location,
+    };
+  }
+
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
@@ -41,8 +82,14 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Access token returned' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiBody({ type: LoginDto })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Body() loginDto: LoginDto, @Req() req: Request) {
+    const metadata = this.extractRequestMetadata(req);
+    return this.authService.login(
+      loginDto,
+      metadata.userAgent,
+      metadata.ipAddress,
+      metadata.location,
+    );
   }
 
   @Post('refresh-token')
@@ -132,7 +179,13 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-    const result = await this.authService.loginWithGoogle(req.user);
+    const metadata = this.extractRequestMetadata(req);
+    const result = await this.authService.loginWithGoogle(
+      req.user,
+      metadata.userAgent,
+      metadata.ipAddress,
+      metadata.location,
+    );
 
     if (result.user) {
       this.logger.log(
