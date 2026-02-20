@@ -29,6 +29,7 @@ export class SessionService {
       location,
       expiresAt,
     });
+    console.log('Saving Session - Email: [ ' + user.email + ' ] Ip address: [ ' + ipAddress + ' ] Location: [ ' + location + ' ]')
     return this.sessionRepo.save(session);
   }
 
