@@ -160,12 +160,45 @@ export class AuthController {
     };
   }
 
+  private logAudit(event: string, details: Record<string, unknown>) {
+    this.logger.log({ event, ...details });
+  }
+
+  private logAuditFailure(
+    event: string,
+    details: Record<string, unknown>,
+    error: unknown,
+  ) {
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    const status =
+      typeof (error as any)?.status === 'number'
+        ? (error as any).status
+        : undefined;
+    this.logger.warn({ event, error: errorName, status, ...details });
+  }
+
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiBody({ type: RegisterDto })
-  async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+  async register(@Body() registerDto: RegisterDto, @Req() req: Request) {
+    const metadata = await this.extractRequestMetadata(req);
+    try {
+      const result = await this.authService.register(registerDto);
+      this.logAudit('USER_REGISTERED', {
+        userId: result?.id,
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return result;
+    } catch (error) {
+      this.logAuditFailure(
+        'USER_REGISTER_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @Post('login')
@@ -175,20 +208,54 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   async login(@Body() loginDto: LoginDto, @Req() req: Request) {
     const metadata = await this.extractRequestMetadata(req);
-    return this.authService.login(
-      loginDto,
-      metadata.userAgent,
-      metadata.ipAddress,
-      metadata.location,
-    );
+    try {
+      const result = await this.authService.login(
+        loginDto,
+        metadata.userAgent,
+        metadata.ipAddress,
+        metadata.location,
+      );
+      this.logAudit('USER_LOGIN_SUCCESS', {
+        userId: result?.userId,
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return result;
+    } catch (error) {
+      this.logAuditFailure(
+        'USER_LOGIN_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @Post('refresh-token')
   @ApiOperation({ summary: 'Generate new access token using refresh token' })
   @ApiResponse({ status: 200, description: 'New access token issued' })
   @ApiBody({ type: RefreshTokenDto })
-  async refreshToken(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshToken(dto.refreshToken, dto.userId);
+  async refreshToken(@Body() dto: RefreshTokenDto, @Req() req: Request) {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      const result = await this.authService.refreshToken(
+        dto.refreshToken,
+        dto.userId,
+      );
+      this.logAudit('TOKEN_REFRESHED', {
+        userId: dto.userId,
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return result;
+    } catch (error) {
+      this.logAuditFailure(
+        'TOKEN_REFRESH_FAILED',
+        { userId: dto.userId, ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @Post('logout')
@@ -199,20 +266,42 @@ export class AuthController {
   async logout(@Body() dto: LogoutDto, @Req() req: Request) {
     const user = req.user as { id: string };
     const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
-    return this.authService.logout(
+    const result = await this.authService.logout(
       user.id,
       dto.sessionId,
       metadata.ipAddress,
       metadata.userAgent,
     );
+    this.logAudit('USER_LOGOUT_REQUEST', {
+      userId: user.id,
+      sessionId: dto.sessionId,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+    return result;
   }
 
   @Post('forgot-password')
   @ApiOperation({ summary: 'Send password reset instructions to user email' })
   @ApiResponse({ status: 200, description: 'Reset link sent' })
   @ApiBody({ type: ForgotPasswordDto })
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.requestPasswordReset(dto.email);
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      const result = await this.authService.requestPasswordReset(dto.email);
+      this.logAudit('PASSWORD_RESET_REQUESTED', {
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return result;
+    } catch (error) {
+      this.logAuditFailure(
+        'PASSWORD_RESET_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @Post('resend-verification')
@@ -222,8 +311,23 @@ export class AuthController {
     description: 'Verification token generated successfully',
   })
   @ApiBody({ type: ResendVerificationDto })
-  async resendVerification(@Body() dto: ResendVerificationDto) {
-    return this.authService.resendVerification(dto.email);
+  async resendVerification(@Body() dto: ResendVerificationDto, @Req() req: Request) {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      const result = await this.authService.resendVerification(dto.email);
+      this.logAudit('VERIFICATION_RESENT', {
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return result;
+    } catch (error) {
+      this.logAuditFailure(
+        'VERIFICATION_RESEND_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @Post('change-password')
@@ -233,11 +337,26 @@ export class AuthController {
   @ApiBody({ type: ChangePasswordDto })
   async changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request) {
     const user = req.user as { id: string };
-    await this.authService.changePassword(
-      user.id,
-      dto.currentPassword,
-      dto.newPassword,
-    );
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      await this.authService.changePassword(
+        user.id,
+        dto.currentPassword,
+        dto.newPassword,
+      );
+      this.logAudit('PASSWORD_CHANGED', {
+        userId: user.id,
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+    } catch (error) {
+      this.logAuditFailure(
+        'PASSWORD_CHANGE_FAILED',
+        { userId: user.id, ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
     return { message: 'Password changed successfully' };
   }
 
@@ -245,9 +364,23 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify user email using token' })
   @ApiResponse({ status: 200, description: 'Email verified successfully' })
   @ApiBody({ type: VerifyEmailDto })
-  async verifyEmail(@Body() dto: VerifyEmailDto) {
-    await this.authService.verifyEmail(dto.token);
-    return { message: 'Email verified successfully' };
+  async verifyEmail(@Body() dto: VerifyEmailDto, @Req() req: Request) {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      await this.authService.verifyEmail(dto.token);
+      this.logAudit('EMAIL_VERIFIED', {
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return { message: 'Email verified successfully' };
+    } catch (error) {
+      this.logAuditFailure(
+        'EMAIL_VERIFY_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -256,7 +389,14 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User info returned' })
   async me(@Req() req: Request) {
     const user = req.user as { id: string };
-    return this.authService.getProfile(user.id);
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    const result = await this.authService.getProfile(user.id);
+    this.logAudit('USER_PROFILE_READ', {
+      userId: user.id,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -265,19 +405,31 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User roles returned' })
   async roles(@Req() req: Request) {
     const user = req.user as { id: string };
-    return this.authService.getUserRoles(user.id);
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    const result = await this.authService.getUserRoles(user.id);
+    this.logAudit('USER_ROLES_READ', {
+      userId: user.id,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+    return result;
   }
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(): Promise<void> {
+  async googleAuth(@Req() req: Request): Promise<void> {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    this.logAudit('GOOGLE_OAUTH_START', {
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
     return;
   }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
-    const metadata = await this.extractRequestMetadata(req);
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
     const result = await this.authService.loginWithGoogle(
       req.user,
       metadata.userAgent,
@@ -285,11 +437,11 @@ export class AuthController {
       metadata.location,
     );
 
-    if (result.user) {
-      this.logger.log(
-        `Google OAuth user authenticated: ${JSON.stringify(result.user)}`,
-      );
-    }
+    this.logAudit('GOOGLE_OAUTH_SUCCESS', {
+      userId: result.user?.id,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
 
     const dashboardUrl = new URL('http://localhost:3000/dashboard');
 
