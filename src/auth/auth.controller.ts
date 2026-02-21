@@ -20,6 +20,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { LogoutDto } from './dto/logout.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -111,7 +112,10 @@ export class AuthController {
     }
   }
 
-  private async extractRequestMetadata(req: Request): Promise<{
+  private async extractRequestMetadata(
+    req: Request,
+    options?: { lookupGeo?: boolean },
+  ): Promise<{
     userAgent?: string;
     ipAddress?: string;
     location?: string;
@@ -146,7 +150,7 @@ export class AuthController {
       .map((value) => (value as string).trim());
     let location = locationParts.length ? locationParts.join(', ') : undefined;
 
-    if (!location) {
+    if (!location && options?.lookupGeo !== false) {
       location = await this.lookupGeoLocation(ipAddress);
     }
     return {
@@ -191,9 +195,16 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Log out user and clear token' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  async logout(@Req() req: Request) {
+  @ApiBody({ type: LogoutDto })
+  async logout(@Body() dto: LogoutDto, @Req() req: Request) {
     const user = req.user as { id: string };
-    return this.authService.logout(user.id);
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    return this.authService.logout(
+      user.id,
+      dto.sessionId,
+      metadata.ipAddress,
+      metadata.userAgent,
+    );
   }
 
   @Post('forgot-password')

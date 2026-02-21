@@ -167,8 +167,30 @@ export class AuthService {
     return { accessToken: newAccessToken };
   }
 
-  async logout(userId: string) {
-    await this.sessionService.revoke(userId);
+  async logout(
+    userId: string,
+    sessionId: string,
+    ip?: string,
+    userAgent?: string,
+  ) {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, user: { id: userId } },
+    });
+
+    const sessionFound = Boolean(session);
+    this.logger.log({
+      event: 'USER_LOGOUT',
+      userId,
+      sessionId,
+      ip,
+      userAgent,
+      sessionFound,
+    });
+
+    if (sessionFound) {
+      await this.sessionService.revokeSingleSession(sessionId);
+    }
+
     return { message: 'Logged out successfully' };
   }
 

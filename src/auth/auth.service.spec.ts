@@ -28,9 +28,13 @@ describe('AuthService', () => {
     create: jest.Mock;
     revoke: jest.Mock;
     revokeSessionById: jest.Mock;
+    revokeSingleSession: jest.Mock;
   }>;
   let configService: jest.Mocked<{ get: jest.Mock }>;
-  let sessionRepo: jest.Mocked<{ find: jest.Mock }>;
+  let sessionRepo: jest.Mocked<{
+    find: jest.Mock;
+    findOne: jest.Mock;
+  }>;
   let notificationsClient: jest.Mocked<{ sendWelcomeEmail: jest.Mock }>;
 
   beforeEach(async () => {
@@ -59,6 +63,7 @@ describe('AuthService', () => {
             create: jest.fn(),
             revoke: jest.fn(),
             revokeSessionById: jest.fn(),
+            revokeSingleSession: jest.fn(),
           },
         },
         {
@@ -71,6 +76,7 @@ describe('AuthService', () => {
           provide: getRepositoryToken(Session),
           useValue: {
             find: jest.fn(),
+            findOne: jest.fn(),
           },
         },
         {
@@ -235,6 +241,41 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'user@example.com', password: 'Wrong!' }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('logout', () => {
+    it('should revoke a single session for the user', async () => {
+      sessionRepo.findOne.mockResolvedValue({
+        id: 'session-id',
+        user: { id: 'user-id' },
+      } as any);
+      sessionService.revokeSingleSession.mockResolvedValue(undefined);
+
+      const result = await service.logout(
+        'user-id',
+        'session-id',
+        '203.0.113.1',
+        'Mozilla/5.0',
+      );
+
+      expect(sessionRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'session-id', user: { id: 'user-id' } },
+      });
+      expect(sessionService.revokeSingleSession).toHaveBeenCalledWith('session-id');
+      expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('should still return success when session does not belong to user', async () => {
+      sessionRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.logout('user-id', 'session-id', '203.0.113.1');
+
+      expect(sessionRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'session-id', user: { id: 'user-id' } },
+      });
+      expect(sessionService.revokeSingleSession).not.toHaveBeenCalled();
+      expect(result).toEqual({ message: 'Logged out successfully' });
     });
   });
 

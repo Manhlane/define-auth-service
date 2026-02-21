@@ -110,4 +110,28 @@ describe('AuthController', () => {
       expect.stringContaining('userId=user-1'),
     );
   });
+
+  it('passes session id to logout', async () => {
+    const dto = { sessionId: 'session-123' };
+    const req = {
+      user: { id: 'user-1' },
+      headers: {
+        'user-agent': 'Mozilla/5.0',
+        'x-forwarded-for': '203.0.113.9',
+        'x-vercel-ip-country': 'ZA',
+      },
+      ip: '10.0.0.2',
+    } as any;
+    authService.logout.mockResolvedValue({ message: 'Logged out successfully' });
+
+    await controller.logout(dto as any, req);
+
+    expect(authService.logout).toHaveBeenCalledWith(
+      'user-1',
+      'session-123',
+      '203.0.113.9',
+      'Mozilla/5.0',
+    );
+  });
+
 });
