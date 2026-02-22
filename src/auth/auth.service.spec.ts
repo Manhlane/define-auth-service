@@ -40,7 +40,10 @@ describe('AuthService', () => {
     find: jest.Mock;
     findOne: jest.Mock;
   }>;
-  let emailVerificationTokenRepo: jest.Mocked<{ save: jest.Mock }>;
+  let emailVerificationTokenRepo: jest.Mocked<{
+    save: jest.Mock;
+    update: jest.Mock;
+  }>;
   let notificationsClient: jest.Mocked<{ sendWelcomeEmail: jest.Mock }>;
 
   beforeEach(async () => {
@@ -90,6 +93,7 @@ describe('AuthService', () => {
           provide: getRepositoryToken(EmailVerificationToken),
           useValue: {
             save: jest.fn(),
+            update: jest.fn(),
           },
         },
         {
@@ -547,6 +551,10 @@ describe('AuthService', () => {
       expect(usersService.updateUser).toHaveBeenCalledWith('user-id', {
         isVerified: true,
       });
+      expect(emailVerificationTokenRepo.update).toHaveBeenCalledWith(
+        { tokenHash: expect.any(String), used: false },
+        { used: true },
+      );
     });
 
     it('verifies a real JWT token (integration)', async () => {
@@ -573,6 +581,7 @@ describe('AuthService', () => {
       await expect(service.verifyEmail('bad-token')).rejects.toBeInstanceOf(
         BadRequestException,
       );
+      expect(emailVerificationTokenRepo.update).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException when token type mismatch', async () => {
@@ -584,6 +593,7 @@ describe('AuthService', () => {
       await expect(service.verifyEmail('token')).rejects.toBeInstanceOf(
         BadRequestException,
       );
+      expect(emailVerificationTokenRepo.update).not.toHaveBeenCalled();
     });
   });
 

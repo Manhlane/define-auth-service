@@ -130,6 +130,14 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  private async markEmailVerificationTokenUsed(token: string): Promise<void> {
+    const tokenHash = this.hashVerificationToken(token);
+    await this.emailVerificationTokenRepo.update(
+      { tokenHash, used: false },
+      { used: true },
+    );
+  }
+
   private async storeEmailVerificationToken(
     userId: string,
     token: string,
@@ -520,6 +528,8 @@ export class AuthService {
     if (!user.isVerified) {
       await this.usersService.updateUser(user.id, { isVerified: true });
     }
+
+    await this.markEmailVerificationTokenUsed(token);
   }
 
   async getProfile(userId: string) {
