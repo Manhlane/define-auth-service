@@ -289,10 +289,7 @@ export class AuthController {
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
     try {
-      const result = await this.authService.requestPasswordReset(
-        dto.email,
-        metadata.ipAddress,
-      );
+      const result = await this.authService.requestPasswordReset(dto.email);
       this.logAudit('PASSWORD_RESET_REQUESTED', {
         ip: metadata.ipAddress,
         userAgent: metadata.userAgent,

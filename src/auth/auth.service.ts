@@ -479,7 +479,7 @@ export class AuthService {
     };
   }
 
-  async requestPasswordReset(email: string, ipAddress?: string) {
+  async requestPasswordReset(email: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
 
