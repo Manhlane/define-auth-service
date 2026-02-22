@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Session } from 'src/session/entities/session.entity';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
 import {
   BadRequestException,
   ConflictException,
@@ -44,7 +45,15 @@ describe('AuthService', () => {
     save: jest.Mock;
     update: jest.Mock;
   }>;
-  let notificationsClient: jest.Mocked<{ sendWelcomeEmail: jest.Mock }>;
+  let passwordResetTokenRepo: jest.Mocked<{
+    save: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
+  }>;
+  let notificationsClient: jest.Mocked<{
+    sendWelcomeEmail: jest.Mock;
+    sendPasswordResetEmail: jest.Mock;
+  }>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -97,9 +106,18 @@ describe('AuthService', () => {
           },
         },
         {
+          provide: getRepositoryToken(PasswordResetToken),
+          useValue: {
+            save: jest.fn(),
+            findOne: jest.fn(),
+            update: jest.fn(),
+          },
+        },
+        {
           provide: NotificationsClient,
           useValue: {
             sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
+            sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -114,6 +132,7 @@ describe('AuthService', () => {
     emailVerificationTokenRepo = module.get(
       getRepositoryToken(EmailVerificationToken),
     );
+    passwordResetTokenRepo = module.get(getRepositoryToken(PasswordResetToken));
     notificationsClient = module.get(NotificationsClient);
 
     configService.get.mockImplementation((key: string) => {
@@ -488,6 +507,9 @@ describe('AuthService', () => {
           'If an account exists for this email, reset instructions have been sent.',
       });
       expect(jwtService.signAsync).not.toHaveBeenCalled();
+      expect(sessionService.revoke).not.toHaveBeenCalled();
+      expect(passwordResetTokenRepo.save).not.toHaveBeenCalled();
+      expect(notificationsClient.sendPasswordResetEmail).not.toHaveBeenCalled();
     });
 
     it('should return reset token for existing user', async () => {
@@ -501,10 +523,84 @@ describe('AuthService', () => {
         { sub: user.id, email: user.email, type: 'password-reset' },
         { secret: 'reset-secret', expiresIn: '10m' },
       );
+      expect(sessionService.revoke).toHaveBeenCalledWith(user.id);
+      expect(passwordResetTokenRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: user.id,
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+          used: false,
+          usedAt: null,
+          ipAddress: null,
+        }),
+      );
+      expect(notificationsClient.sendPasswordResetEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: user.email,
+          name: user.name,
+          resetUrl: expect.stringContaining('/reset-password?token='),
+          expiresInMinutes: expect.any(Number),
+        }),
+      );
       expect(result).toMatchObject({
         message: 'Password reset instructions generated successfully.',
         resetToken: 'reset-token',
       });
+    });
+  });
+
+  describe('confirmPasswordReset', () => {
+    it('updates password, revokes sessions, and marks token used', async () => {
+      const user = mockUser({ password: await bcrypt.hash('OldPass1!', 10) });
+      jwtService.verifyAsync.mockResolvedValueOnce({
+        sub: user.id,
+        type: 'password-reset',
+      });
+      passwordResetTokenRepo.findOne.mockResolvedValue({
+        id: 'token-id',
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 10000),
+        used: false,
+      } as any);
+      usersService.findById.mockResolvedValue(user);
+
+      await service.confirmPasswordReset(
+        'reset-token',
+        'NewPass1!',
+        '203.0.113.9',
+      );
+
+      expect(usersService.updateUser).toHaveBeenCalledWith(
+        user.id,
+        expect.objectContaining({ password: expect.any(String) }),
+      );
+      const updatedPassword = usersService.updateUser.mock.calls[0][1].password;
+      expect(updatedPassword).not.toBe('NewPass1!');
+      expect(sessionService.revoke).toHaveBeenCalledWith(user.id);
+      expect(passwordResetTokenRepo.update).toHaveBeenCalledWith(
+        { tokenHash: expect.any(String), used: false },
+        { used: true, usedAt: expect.any(Date), ipAddress: '203.0.113.9' },
+      );
+    });
+
+    it('throws when token is expired', async () => {
+      jwtService.verifyAsync.mockResolvedValueOnce({
+        sub: 'user-id',
+        type: 'password-reset',
+      });
+      passwordResetTokenRepo.findOne.mockResolvedValue({
+        id: 'token-id',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() - 1000),
+        used: false,
+      } as any);
+
+      await expect(
+        service.confirmPasswordReset('reset-token', 'NewPass1!'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(usersService.updateUser).not.toHaveBeenCalled();
+      expect(passwordResetTokenRepo.update).not.toHaveBeenCalled();
     });
   });
 
@@ -553,7 +649,7 @@ describe('AuthService', () => {
       });
       expect(emailVerificationTokenRepo.update).toHaveBeenCalledWith(
         { tokenHash: expect.any(String), used: false },
-        { used: true },
+        { used: true, usedAt: expect.any(Date), ipAddress: null },
       );
     });
 

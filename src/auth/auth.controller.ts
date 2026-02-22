@@ -21,6 +21,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -288,7 +289,10 @@ export class AuthController {
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
     try {
-      const result = await this.authService.requestPasswordReset(dto.email);
+      const result = await this.authService.requestPasswordReset(
+        dto.email,
+        metadata.ipAddress,
+      );
       this.logAudit('PASSWORD_RESET_REQUESTED', {
         ip: metadata.ipAddress,
         userAgent: metadata.userAgent,
@@ -297,6 +301,36 @@ export class AuthController {
     } catch (error) {
       this.logAuditFailure(
         'PASSWORD_RESET_FAILED',
+        { ip: metadata.ipAddress, userAgent: metadata.userAgent },
+        error,
+      );
+      throw error;
+    }
+  }
+
+  @Post('confirm-password-reset')
+  @ApiOperation({ summary: 'Confirm password reset with token and new password' })
+  @ApiResponse({ status: 200, description: 'Password reset successful' })
+  @ApiBody({ type: ConfirmPasswordResetDto })
+  async confirmPasswordReset(
+    @Body() dto: ConfirmPasswordResetDto,
+    @Req() req: Request,
+  ) {
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    try {
+      await this.authService.confirmPasswordReset(
+        dto.token,
+        dto.newPassword,
+        metadata.ipAddress,
+      );
+      this.logAudit('PASSWORD_RESET_CONFIRMED', {
+        ip: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+      return { message: 'Password reset successful' };
+    } catch (error) {
+      this.logAuditFailure(
+        'PASSWORD_RESET_CONFIRM_FAILED',
         { ip: metadata.ipAddress, userAgent: metadata.userAgent },
         error,
       );
@@ -367,7 +401,7 @@ export class AuthController {
   async verifyEmail(@Body() dto: VerifyEmailDto, @Req() req: Request) {
     const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
     try {
-      await this.authService.verifyEmail(dto.token);
+      await this.authService.verifyEmail(dto.token, metadata.ipAddress);
       this.logAudit('EMAIL_VERIFIED', {
         ip: metadata.ipAddress,
         userAgent: metadata.userAgent,

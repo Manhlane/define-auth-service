@@ -8,8 +8,8 @@ import {
 } from 'typeorm';
 import { User } from 'src/users/entities/user.entity';
 
-@Entity('email_verification_tokens')
-export class EmailVerificationToken {
+@Entity('password_reset_tokens')
+export class PasswordResetToken {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

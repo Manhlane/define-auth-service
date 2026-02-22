@@ -20,6 +20,7 @@ import { Repository } from 'typeorm';
 import { Session } from '../session/entities/session.entity';
 import { NotificationsClient } from 'src/notifications/notifications.client';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
 
 @Injectable()
 export class AuthService {
@@ -34,6 +35,8 @@ export class AuthService {
     private readonly sessionRepo: Repository<Session>,
     @InjectRepository(EmailVerificationToken)
     private readonly emailVerificationTokenRepo: Repository<EmailVerificationToken>,
+    @InjectRepository(PasswordResetToken)
+    private readonly passwordResetTokenRepo: Repository<PasswordResetToken>,
     private readonly notificationsClient: NotificationsClient,
   ) {}
 
@@ -63,6 +66,11 @@ export class AuthService {
     return (
       this.configService.get<string>('PASSWORD_RESET_TOKEN_EXPIRY') ?? '15m'
     );
+  }
+
+  private get passwordResetExpiryMinutes(): number {
+    const ms = this.parseDurationToMs(this.passwordResetExpiry);
+    return Math.max(1, Math.ceil(ms / 60000));
   }
 
   private get emailVerificationSecret(): string | undefined {
@@ -126,15 +134,28 @@ export class AuthService {
     return new Date(Date.now() + fallbackMs);
   }
 
-  private hashVerificationToken(token: string): string {
+  private getPasswordResetTokenExpiry(token: string): Date {
+    const decoded = this.jwtService.decode(token) as { exp?: number } | null;
+    if (decoded?.exp) {
+      return new Date(decoded.exp * 1000);
+    }
+
+    const fallbackMs = this.parseDurationToMs(this.passwordResetExpiry);
+    return new Date(Date.now() + fallbackMs);
+  }
+
+  private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async markEmailVerificationTokenUsed(token: string): Promise<void> {
-    const tokenHash = this.hashVerificationToken(token);
+  private async markEmailVerificationTokenUsed(
+    token: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    const tokenHash = this.hashToken(token);
     await this.emailVerificationTokenRepo.update(
       { tokenHash, used: false },
-      { used: true },
+      { used: true, usedAt: new Date(), ipAddress: ipAddress ?? null },
     );
   }
 
@@ -142,7 +163,7 @@ export class AuthService {
     userId: string,
     token: string,
   ): Promise<void> {
-    const tokenHash = this.hashVerificationToken(token);
+    const tokenHash = this.hashToken(token);
     const expiresAt = this.getVerificationTokenExpiry(token);
 
     await this.emailVerificationTokenRepo.save({
@@ -151,6 +172,34 @@ export class AuthService {
       expiresAt,
       used: false,
     });
+  }
+
+  private async storePasswordResetToken(
+    userId: string,
+    token: string,
+  ): Promise<void> {
+    const tokenHash = this.hashToken(token);
+    const expiresAt = this.getPasswordResetTokenExpiry(token);
+
+    await this.passwordResetTokenRepo.save({
+      userId,
+      tokenHash,
+      expiresAt,
+      used: false,
+      usedAt: null,
+      ipAddress: null,
+    });
+  }
+
+  private async markPasswordResetTokenUsed(
+    token: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    const tokenHash = this.hashToken(token);
+    await this.passwordResetTokenRepo.update(
+      { tokenHash, used: false },
+      { used: true, usedAt: new Date(), ipAddress: ipAddress ?? null },
+    );
   }
 
   private sanitizeUser(user: User) {
@@ -430,7 +479,7 @@ export class AuthService {
     };
   }
 
-  async requestPasswordReset(email: string) {
+  async requestPasswordReset(email: string, ipAddress?: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
 
@@ -442,6 +491,22 @@ export class AuthService {
     }
 
     const resetToken = await this.generatePasswordResetToken(user);
+    await this.sessionService.revoke(user.id);
+    await this.storePasswordResetToken(user.id, resetToken);
+    const resetUrl = this.buildPasswordResetUrl(resetToken);
+
+    try {
+      await this.notificationsClient.sendPasswordResetEmail({
+        email: user.email,
+        name: user.name,
+        resetUrl,
+        expiresInMinutes: this.passwordResetExpiryMinutes,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to enqueue password reset email for ${user.email}: ${error}`,
+      );
+    }
 
     return {
       message: 'Password reset instructions generated successfully.',
@@ -503,7 +568,7 @@ export class AuthService {
     await this.sessionService.revoke(user.id);
   }
 
-  async verifyEmail(token: string): Promise<void> {
+  async verifyEmail(token: string, ipAddress?: string): Promise<void> {
     let payload: any;
 
     try {
@@ -529,7 +594,61 @@ export class AuthService {
       await this.usersService.updateUser(user.id, { isVerified: true });
     }
 
-    await this.markEmailVerificationTokenUsed(token);
+    await this.markEmailVerificationTokenUsed(token, ipAddress);
+  }
+
+  async confirmPasswordReset(
+    token: string,
+    newPassword: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    let payload: any;
+
+    try {
+      const secret = this.passwordResetSecret;
+      payload = await this.jwtService.verifyAsync(
+        token,
+        secret ? { secret } : undefined,
+      );
+    } catch (error) {
+      throw new BadRequestException('Invalid or expired password reset token');
+    }
+
+    if (payload.type !== 'password-reset' || !payload.sub) {
+      throw new BadRequestException('Invalid password reset token');
+    }
+
+    const tokenHash = this.hashToken(token);
+    const storedToken = await this.passwordResetTokenRepo.findOne({
+      where: { tokenHash, used: false, userId: payload.sub },
+    });
+
+    if (!storedToken) {
+      throw new BadRequestException('Invalid or expired password reset token');
+    }
+
+    if (storedToken.expiresAt && storedToken.expiresAt < new Date()) {
+      throw new BadRequestException('Password reset token has expired');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user) {
+      throw new NotFoundException('User account not found');
+    }
+
+    if (user.password) {
+      const isSame = await bcrypt.compare(newPassword, user.password);
+      if (isSame) {
+        throw new BadRequestException(
+          'New password must be different from the current password',
+        );
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.usersService.updateUser(user.id, { password: hashedPassword });
+    await this.sessionService.revoke(user.id);
+    await this.markPasswordResetTokenUsed(token, ipAddress);
   }
 
   async getProfile(userId: string) {
@@ -558,6 +677,19 @@ export class AuthService {
     } catch (error) {
       this.logger.warn(
         `Failed to build verification URL, falling back to token only: ${error}`,
+      );
+      return token;
+    }
+  }
+
+  private buildPasswordResetUrl(token: string): string {
+    try {
+      const url = new URL('/reset-password', this.appBaseUrl);
+      url.searchParams.set('token', token);
+      return url.toString();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to build password reset URL, falling back to token only: ${error}`,
       );
       return token;
     }

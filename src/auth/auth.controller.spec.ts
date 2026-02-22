@@ -11,6 +11,7 @@ describe('AuthController', () => {
     refreshToken: jest.Mock;
     logout: jest.Mock;
     requestPasswordReset: jest.Mock;
+    confirmPasswordReset: jest.Mock;
     changePassword: jest.Mock;
     verifyEmail: jest.Mock;
     getProfile: jest.Mock;
@@ -25,6 +26,7 @@ describe('AuthController', () => {
       refreshToken: jest.fn(),
       logout: jest.fn(),
       requestPasswordReset: jest.fn(),
+      confirmPasswordReset: jest.fn(),
       changePassword: jest.fn(),
       verifyEmail: jest.fn(),
       getProfile: jest.fn(),

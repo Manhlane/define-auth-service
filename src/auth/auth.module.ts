@@ -10,6 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Session } from 'src/session/entities/session.entity';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { NotificationsClient } from 'src/notifications/notifications.client';
 
@@ -18,7 +19,11 @@ import { NotificationsClient } from 'src/notifications/notifications.client';
     ConfigModule,
     UsersModule,
     SessionModule,
-    TypeOrmModule.forFeature([Session, EmailVerificationToken]),
+    TypeOrmModule.forFeature([
+      Session,
+      EmailVerificationToken,
+      PasswordResetToken,
+    ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

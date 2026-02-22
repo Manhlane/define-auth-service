@@ -7,6 +7,14 @@ type WelcomePayload = {
   verificationUrl?: string;
 };
 
+type PasswordResetPayload = {
+  email: string;
+  name?: string;
+  resetUrl: string;
+  expiresInMinutes?: number;
+  supportUrl?: string;
+};
+
 @Injectable()
 export class NotificationsClient {
   private readonly logger = new Logger(NotificationsClient.name);
@@ -30,6 +38,16 @@ export class NotificationsClient {
       name: payload.name,
       verificationUrl: payload.verificationUrl,
       dashboardUrl: this.dashboardUrl,
+    });
+  }
+
+  async sendPasswordResetEmail(payload: PasswordResetPayload): Promise<void> {
+    await this.post('/auth/password-reset', {
+      email: payload.email,
+      name: payload.name,
+      resetUrl: payload.resetUrl,
+      expiresInMinutes: payload.expiresInMinutes,
+      supportUrl: payload.supportUrl,
     });
   }
 
