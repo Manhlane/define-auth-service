@@ -6,6 +6,7 @@ import { SessionService } from 'src/session/session.service';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Session } from 'src/session/entities/session.entity';
+import { EmailVerificationToken } from './entities/email-verification-token.entity';
 import {
   BadRequestException,
   ConflictException,
@@ -23,7 +24,11 @@ describe('AuthService', () => {
     create: jest.Mock;
     updateUser: jest.Mock;
   }>;
-  let jwtService: jest.Mocked<{ signAsync: jest.Mock; verifyAsync: jest.Mock }>;
+  let jwtService: jest.Mocked<{
+    signAsync: jest.Mock;
+    verifyAsync: jest.Mock;
+    decode: jest.Mock;
+  }>;
   let sessionService: jest.Mocked<{
     create: jest.Mock;
     revoke: jest.Mock;
@@ -35,6 +40,7 @@ describe('AuthService', () => {
     find: jest.Mock;
     findOne: jest.Mock;
   }>;
+  let emailVerificationTokenRepo: jest.Mocked<{ save: jest.Mock }>;
   let notificationsClient: jest.Mocked<{ sendWelcomeEmail: jest.Mock }>;
 
   beforeEach(async () => {
@@ -55,6 +61,7 @@ describe('AuthService', () => {
           useValue: {
             signAsync: jest.fn(),
             verifyAsync: jest.fn(),
+            decode: jest.fn(),
           },
         },
         {
@@ -80,6 +87,12 @@ describe('AuthService', () => {
           },
         },
         {
+          provide: getRepositoryToken(EmailVerificationToken),
+          useValue: {
+            save: jest.fn(),
+          },
+        },
+        {
           provide: NotificationsClient,
           useValue: {
             sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
@@ -94,6 +107,9 @@ describe('AuthService', () => {
     sessionService = module.get(SessionService);
     configService = module.get(ConfigService);
     sessionRepo = module.get(getRepositoryToken(Session));
+    emailVerificationTokenRepo = module.get(
+      getRepositoryToken(EmailVerificationToken),
+    );
     notificationsClient = module.get(NotificationsClient);
 
     configService.get.mockImplementation((key: string) => {
@@ -147,6 +163,7 @@ describe('AuthService', () => {
       const user = mockUser();
       usersService.create.mockResolvedValue(user);
       jwtService.signAsync.mockResolvedValueOnce('verification-token');
+      jwtService.decode.mockReturnValue(null);
 
       const result = await service.register({
         email: 'User@Example.com',
@@ -173,6 +190,16 @@ describe('AuthService', () => {
           verificationUrl: expect.stringContaining('verify-email'),
         }),
       );
+      expect(emailVerificationTokenRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: user.id,
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+          used: false,
+        }),
+      );
+      const savedToken = emailVerificationTokenRepo.save.mock.calls[0][0];
+      expect(savedToken.tokenHash).not.toBe('verification-token');
     });
 
     it('should throw when email already exists', async () => {
@@ -266,7 +293,7 @@ describe('AuthService', () => {
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 
-    it('should still return success when session does not belong to user', async () => {
+    it('should not revoke when session belongs to another user (cross-user safety)', async () => {
       sessionRepo.findOne.mockResolvedValue(null);
 
       const result = await service.logout('user-id', 'session-id', '203.0.113.1');
@@ -399,6 +426,44 @@ describe('AuthService', () => {
       expect(result).toEqual({ accessToken: 'new-access-token' });
     });
 
+    it('should revoke and throw when refresh token is expired', async () => {
+      const hashed = await bcrypt.hash('plain-refresh', 10);
+      const session = {
+        id: 'expired-session',
+        refreshToken: hashed,
+        expiresAt: new Date(Date.now() - 1000),
+        status: 'active',
+        user: mockUser({ roles: ['user'] }),
+      };
+      sessionRepo.find.mockResolvedValue([session]);
+
+      await expect(
+        service.refreshToken('plain-refresh', 'user-id'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(sessionService.revokeSessionById).toHaveBeenCalledWith('expired-session');
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('should throw when refresh token hash does not match', async () => {
+      const hashed = await bcrypt.hash('different-refresh', 10);
+      const session = {
+        id: 'session-id',
+        refreshToken: hashed,
+        expiresAt: new Date(Date.now() + 10000),
+        status: 'active',
+        user: mockUser({ roles: ['user'] }),
+      };
+      sessionRepo.find.mockResolvedValue([session]);
+
+      await expect(
+        service.refreshToken('plain-refresh', 'user-id'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(sessionService.revokeSessionById).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    });
+
     it('should throw when refresh token does not match any session', async () => {
       sessionRepo.find.mockResolvedValue([]);
 
@@ -440,7 +505,7 @@ describe('AuthService', () => {
   });
 
   describe('changePassword', () => {
-    it('should update password and revoke sessions', async () => {
+    it('should update password and revoke sessions (invalidates refresh tokens)', async () => {
       const hashedPassword = await bcrypt.hash('OldPass1!', 10);
       usersService.findById.mockResolvedValue(
         mockUser({ password: hashedPassword }),
@@ -478,6 +543,24 @@ describe('AuthService', () => {
       usersService.findById.mockResolvedValue(mockUser({ isVerified: false }));
 
       await service.verifyEmail('token');
+
+      expect(usersService.updateUser).toHaveBeenCalledWith('user-id', {
+        isVerified: true,
+      });
+    });
+
+    it('verifies a real JWT token (integration)', async () => {
+      const realJwt = new JwtService({ secret: 'verify-secret' });
+      const token = await realJwt.signAsync(
+        { sub: 'user-id', email: 'user@example.com', type: 'email-verification' },
+        { secret: 'verify-secret', expiresIn: '1h' },
+      );
+      jwtService.verifyAsync.mockImplementation((tokenArg: string, options: any) =>
+        realJwt.verifyAsync(tokenArg, options),
+      );
+      usersService.findById.mockResolvedValue(mockUser({ isVerified: false }));
+
+      await service.verifyEmail(token);
 
       expect(usersService.updateUser).toHaveBeenCalledWith('user-id', {
         isVerified: true,

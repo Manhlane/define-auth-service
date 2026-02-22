@@ -19,7 +19,8 @@ export class NotificationsClient {
         'http://localhost:3005/notifications',
     );
     const appBase =
-      this.configService.get<string>('APP_BASE_URL') ?? 'http://localhost:3000';
+      this.configService.get<string>('APP_BASE_URL') ??
+      'http://34.251.72.37:3002';
     this.dashboardUrl = this.resolveUrl(appBase, '/dashboard');
   }
 

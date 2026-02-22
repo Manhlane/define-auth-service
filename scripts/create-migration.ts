@@ -55,21 +55,9 @@ export class ${className} implements MigrationInterface {
       );
     \`);
 
-    await queryRunner.query(\`
-      CREATE TABLE "verification_tokens" (
-        "id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        "user_id" UUID NOT NULL,
-        "token" VARCHAR NOT NULL UNIQUE,
-        "type" VARCHAR NOT NULL,
-        "expires_at" TIMESTAMP NOT NULL,
-        "created_at" TIMESTAMP DEFAULT now(),
-        CONSTRAINT "FK_tokens_user" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE
-      );
-    \`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(\`DROP TABLE IF EXISTS "verification_tokens";\`);
     await queryRunner.query(\`DROP TABLE IF EXISTS "sessions";\`);
     await queryRunner.query(\`DROP TABLE IF EXISTS "users";\`);
   }

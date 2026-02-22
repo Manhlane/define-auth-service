@@ -13,12 +13,13 @@ import { SessionService } from '../session/session.service';
 import { LoginDto } from './dto/login.dto';
 import { User } from 'src/users/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Session } from '../session/entities/session.entity';
 import { NotificationsClient } from 'src/notifications/notifications.client';
+import { EmailVerificationToken } from './entities/email-verification-token.entity';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,8 @@ export class AuthService {
     private readonly configService: ConfigService,
     @InjectRepository(Session)
     private readonly sessionRepo: Repository<Session>,
+    @InjectRepository(EmailVerificationToken)
+    private readonly emailVerificationTokenRepo: Repository<EmailVerificationToken>,
     private readonly notificationsClient: NotificationsClient,
   ) {}
 
@@ -77,12 +80,69 @@ export class AuthService {
 
   private get appBaseUrl(): string {
     return (
-      this.configService.get<string>('APP_BASE_URL') ?? 'http://localhost:3000'
+      this.configService.get<string>('APP_BASE_URL') ??
+      'http://34.251.72.37:3002'
     );
   }
 
   private buildJwtOptions(secret: string | undefined, expiresIn: string) {
     return secret ? { secret, expiresIn } : { expiresIn };
+  }
+
+  private parseDurationToMs(value: string): number {
+    const trimmed = value.trim();
+    const match = /^(\d+)([smhd])$/.exec(trimmed);
+    if (!match) {
+      const asNumber = Number(trimmed);
+      if (!Number.isNaN(asNumber)) {
+        return asNumber;
+      }
+      return 24 * 60 * 60 * 1000;
+    }
+
+    const amount = Number(match[1]);
+    const unit = match[2];
+    switch (unit) {
+      case 's':
+        return amount * 1000;
+      case 'm':
+        return amount * 60 * 1000;
+      case 'h':
+        return amount * 60 * 60 * 1000;
+      case 'd':
+        return amount * 24 * 60 * 60 * 1000;
+      default:
+        return 24 * 60 * 60 * 1000;
+    }
+  }
+
+  private getVerificationTokenExpiry(token: string): Date {
+    const decoded = this.jwtService.decode(token) as { exp?: number } | null;
+    if (decoded?.exp) {
+      return new Date(decoded.exp * 1000);
+    }
+
+    const fallbackMs = this.parseDurationToMs(this.emailVerificationExpiry);
+    return new Date(Date.now() + fallbackMs);
+  }
+
+  private hashVerificationToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async storeEmailVerificationToken(
+    userId: string,
+    token: string,
+  ): Promise<void> {
+    const tokenHash = this.hashVerificationToken(token);
+    const expiresAt = this.getVerificationTokenExpiry(token);
+
+    await this.emailVerificationTokenRepo.save({
+      userId,
+      tokenHash,
+      expiresAt,
+      used: false,
+    });
   }
 
   private sanitizeUser(user: User) {
@@ -213,17 +273,25 @@ export class AuthService {
     const verificationToken = await this.generateEmailVerificationToken(user);
     const verificationUrl = this.buildVerificationUrl(verificationToken);
 
-    this.notificationsClient
-      .sendWelcomeEmail({
+    try {
+      await this.notificationsClient.sendWelcomeEmail({
         email: user.email,
         name: user.name,
         verificationUrl,
-      })
-      .catch((error) =>
-        this.logger.warn(
-          `Failed to enqueue welcome email for ${user.email}: ${error}`,
-        ),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to enqueue welcome email for ${user.email}: ${error}`,
       );
+    }
+
+    try {
+      await this.storeEmailVerificationToken(user.id, verificationToken);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to store email verification token for ${user.email}: ${error}`,
+      );
+    }
 
     return {
       ...this.sanitizeUser(user),
