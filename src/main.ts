@@ -29,7 +29,7 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('dfn/a/swagger', app, document);
 
   await app.listen(process.env.PORT, '0.0.0.0');
   console.log(`Auth API running on ${await app.getUrl()}`);
