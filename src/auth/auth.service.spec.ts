@@ -168,6 +168,12 @@ describe('AuthService', () => {
     id: 'user-id',
     email: 'user@example.com',
     name: 'Test User',
+    businessName: null,
+    phone: null,
+    bankName: null,
+    accountNumber: null,
+    accountType: null,
+    avatarUrl: null,
     password: 'hashed-password',
     roles: ['user'],
     isVerified: false,
@@ -198,6 +204,12 @@ describe('AuthService', () => {
       expect(usersService.create).toHaveBeenCalledTimes(1);
       const createPayload = usersService.create.mock.calls[0][0];
       expect(createPayload.email).toBe('user@example.com');
+      expect(createPayload.businessName).toBeNull();
+      expect(createPayload.phone).toBeNull();
+      expect(createPayload.bankName).toBeNull();
+      expect(createPayload.accountNumber).toBeNull();
+      expect(createPayload.accountType).toBeNull();
+      expect(createPayload.avatarUrl).toBeNull();
       expect(createPayload.password).not.toBe('PlainPassword1!');
       expect(result).toMatchObject({
         id: user.id,
@@ -704,9 +716,61 @@ describe('AuthService', () => {
         id: user.id,
         email: user.email,
         name: user.name,
+        businessName: null,
+        phone: null,
+        bankName: null,
+        accountNumber: null,
+        accountType: null,
+        avatarUrl: null,
         isVerified: true,
       });
       expect(result).not.toHaveProperty('password');
+    });
+
+    it('updateProfile should update name and nullable business name', async () => {
+      const user = mockUser();
+      const updated = mockUser({
+        name: 'Updated User',
+        businessName: 'Updated Studio',
+        phone: '+27 71 123 4567',
+        bankName: 'FNB',
+        accountNumber: '1234567890',
+        accountType: 'savings',
+        avatarUrl: 'data:image/png;base64,abc',
+      });
+      usersService.findById
+        .mockResolvedValueOnce(user)
+        .mockResolvedValueOnce(updated);
+
+      const result = await service.updateProfile('user-id', {
+        name: ' Updated User ',
+        businessName: ' Updated Studio ',
+        phone: ' +27 71 123 4567 ',
+        bankName: ' FNB ',
+        accountNumber: ' 1234567890 ',
+        accountType: ' savings ',
+        avatarUrl: ' data:image/png;base64,abc ',
+      });
+
+      expect(usersService.updateUser).toHaveBeenCalledWith('user-id', {
+        name: 'Updated User',
+        businessName: 'Updated Studio',
+        phone: '+27 71 123 4567',
+        bankName: 'FNB',
+        accountNumber: '1234567890',
+        accountType: 'savings',
+        avatarUrl: 'data:image/png;base64,abc',
+      });
+      expect(result).toMatchObject({
+        id: user.id,
+        name: 'Updated User',
+        businessName: 'Updated Studio',
+        phone: '+27 71 123 4567',
+        bankName: 'FNB',
+        accountNumber: '1234567890',
+        accountType: 'savings',
+        avatarUrl: 'data:image/png;base64,abc',
+      });
     });
 
     it('getUserRoles should return role payload', async () => {

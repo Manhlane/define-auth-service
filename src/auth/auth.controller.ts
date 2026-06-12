@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Post,
   UseGuards,
   Req,
@@ -22,6 +23,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -423,6 +425,39 @@ export class AuthController {
     const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
     const result = await this.authService.getProfile(user.id);
     this.logAudit('USER_PROFILE_READ', {
+      userId: user.id,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  @ApiOperation({ summary: 'Get current authenticated user profile' })
+  @ApiResponse({ status: 200, description: 'Profile returned' })
+  async profile(@Req() req: Request) {
+    const user = req.user as { id: string };
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    const result = await this.authService.getProfile(user.id);
+    this.logAudit('USER_PROFILE_READ', {
+      userId: user.id,
+      ip: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  @ApiOperation({ summary: 'Update current authenticated user profile' })
+  @ApiResponse({ status: 200, description: 'Profile updated' })
+  @ApiBody({ type: UpdateProfileDto })
+  async updateProfile(@Body() dto: UpdateProfileDto, @Req() req: Request) {
+    const user = req.user as { id: string };
+    const metadata = await this.extractRequestMetadata(req, { lookupGeo: false });
+    const result = await this.authService.updateProfile(user.id, dto);
+    this.logAudit('USER_PROFILE_UPDATED', {
       userId: user.id,
       ip: metadata.ipAddress,
       userAgent: metadata.userAgent,

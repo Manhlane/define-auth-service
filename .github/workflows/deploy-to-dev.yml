@@ -55,6 +55,15 @@ jobs:
           script: |
             set -euo pipefail
             docker pull ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            if docker ps -a --format '{{.Names}}' | grep -q '^${{ env.CONTAINER_NAME }}-migrate$'; then
+              docker rm -f ${{ env.CONTAINER_NAME }}-migrate
+            fi
+            docker run --rm \
+              --name ${{ env.CONTAINER_NAME }}-migrate \
+              --env-file ${{ env.ENV_FILE_PATH }} \
+              --network ${{ env.DOCKER_NETWORK }} \
+              ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+              npm run migration:run:prod
             if docker ps -a --format '{{.Names}}' | grep -q '^${{ env.CONTAINER_NAME }}$'; then
               docker rm -f ${{ env.CONTAINER_NAME }}
             fi

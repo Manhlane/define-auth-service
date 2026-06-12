@@ -35,6 +35,12 @@ export class UsersService {
     email: string;
     name: string;
     password: string;
+    businessName?: string | null;
+    phone?: string | null;
+    bankName?: string | null;
+    accountNumber?: string | null;
+    accountType?: string | null;
+    avatarUrl?: string | null;
     isVerified?: boolean;
     roles?: string[];
   }): Promise<User> {
@@ -47,6 +53,12 @@ export class UsersService {
     const user = this.userRepo.create({
       email: normalizedEmail,
       name: data.name,
+      businessName: data.businessName ?? null,
+      phone: data.phone ?? null,
+      bankName: data.bankName ?? null,
+      accountNumber: data.accountNumber ?? null,
+      accountType: data.accountType ?? null,
+      avatarUrl: data.avatarUrl ?? null,
       password: data.password,
       isVerified: data.isVerified ?? false,
       roles: data.roles ?? ['user'],

@@ -15,6 +15,7 @@ describe('AuthController', () => {
     changePassword: jest.Mock;
     verifyEmail: jest.Mock;
     getProfile: jest.Mock;
+    updateProfile: jest.Mock;
     getUserRoles: jest.Mock;
   };
 
@@ -30,6 +31,7 @@ describe('AuthController', () => {
       changePassword: jest.fn(),
       verifyEmail: jest.fn(),
       getProfile: jest.fn(),
+      updateProfile: jest.fn(),
       getUserRoles: jest.fn(),
     };
 

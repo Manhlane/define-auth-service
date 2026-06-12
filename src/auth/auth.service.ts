@@ -21,6 +21,7 @@ import { Session } from '../session/entities/session.entity';
 import { NotificationsClient } from 'src/notifications/notifications.client';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -207,6 +208,12 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name,
+      businessName: user.businessName ?? null,
+      phone: user.phone ?? null,
+      bankName: user.bankName ?? null,
+      accountNumber: user.accountNumber ?? null,
+      accountType: user.accountType ?? null,
+      avatarUrl: user.avatarUrl ?? null,
       isVerified: user.isVerified,
       roles: user.roles,
       createdAt: user.createdAt,
@@ -324,6 +331,12 @@ export class AuthService {
     const user = await this.usersService.create({
       email: normalizedEmail,
       name: dto.name,
+      businessName: null,
+      phone: null,
+      bankName: null,
+      accountNumber: null,
+      accountType: null,
+      avatarUrl: null,
       password: hashedPassword,
     });
 
@@ -409,6 +422,8 @@ export class AuthService {
       userId: user.id,
       accessToken,
       refreshToken,
+      name: user.name,
+      businessName: user.businessName ?? null,
       isVerified: user.isVerified,
     };
   }
@@ -430,6 +445,12 @@ export class AuthService {
       user = await this.usersService.create({
         email: normalizedEmail,
         name: name || googleUser.email,
+        businessName: null,
+        phone: null,
+        bankName: null,
+        accountNumber: null,
+        accountType: null,
+        avatarUrl: null,
         password: generatedPassword,
         isVerified: true,
         roles: googleUser.roles ?? ['user'],
@@ -658,6 +679,75 @@ export class AuthService {
     }
 
     return this.sanitizeUser(user);
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updateData: Partial<User> = {};
+
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (!email) {
+        throw new BadRequestException('Email cannot be empty');
+      }
+      if (email !== user.email) {
+        const existing = await this.usersService.findByEmail(email);
+        if (existing && existing.id !== user.id) {
+          throw new ConflictException('Email already in use');
+        }
+        updateData.email = email;
+        updateData.isVerified = false;
+      }
+    }
+
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) {
+        throw new BadRequestException('Name cannot be empty');
+      }
+      updateData.name = name;
+    }
+
+    if (dto.businessName !== undefined) {
+      const businessName = dto.businessName?.trim();
+      updateData.businessName = businessName || null;
+    }
+
+    if (dto.phone !== undefined) {
+      const phone = dto.phone?.trim();
+      updateData.phone = phone || null;
+    }
+
+    if (dto.bankName !== undefined) {
+      const bankName = dto.bankName?.trim();
+      updateData.bankName = bankName || null;
+    }
+
+    if (dto.accountNumber !== undefined) {
+      const accountNumber = dto.accountNumber?.trim();
+      updateData.accountNumber = accountNumber || null;
+    }
+
+    if (dto.accountType !== undefined) {
+      const accountType = dto.accountType?.trim();
+      updateData.accountType = accountType || null;
+    }
+
+    if (dto.avatarUrl !== undefined) {
+      const avatarUrl = dto.avatarUrl?.trim();
+      updateData.avatarUrl = avatarUrl || null;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await this.usersService.updateUser(user.id, updateData);
+    }
+
+    const refreshed = await this.usersService.findById(user.id);
+    return this.sanitizeUser(refreshed ?? { ...user, ...updateData });
   }
 
   async getUserRoles(userId: string) {
