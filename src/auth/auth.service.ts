@@ -681,6 +681,21 @@ export class AuthService {
     return this.sanitizeUser(user);
   }
 
+  async getPublicProfile(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      businessName: user.businessName ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      isVerified: user.isVerified,
+    };
+  }
+
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.usersService.findById(userId);
     if (!user) {

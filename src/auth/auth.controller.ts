@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Patch,
   Post,
   UseGuards,
@@ -446,6 +447,13 @@ export class AuthController {
       userAgent: metadata.userAgent,
     });
     return result;
+  }
+
+  @Get('users/:id/public-profile')
+  @ApiOperation({ summary: 'Get public service provider profile' })
+  @ApiResponse({ status: 200, description: 'Public profile returned' })
+  async publicProfile(@Param('id') id: string) {
+    return this.authService.getPublicProfile(id);
   }
 
   @UseGuards(JwtAuthGuard)
