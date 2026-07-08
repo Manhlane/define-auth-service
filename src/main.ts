@@ -7,7 +7,8 @@ async function bootstrap() {
 
   // ✅ CORS for your Next.js app on :3002 (and optional env origin)
   const allowedOrigins = [
-    process.env.FRONTEND_ORIGIN ?? '', 'http://localhost:3000'
+    process.env.FRONTEND_ORIGIN ?? '', 'http://localhost:3000', 'https://joindfn.com',
+    'https://www.joindfn.com',
   ]
     .filter(Boolean)
     .filter((value, index, self) => self.indexOf(value) === index);
