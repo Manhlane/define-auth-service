@@ -21,7 +21,7 @@ jobs:
       CONTAINER_NAME: define-auth
       APP_PORT: "3000"
       CONTAINER_PORT: "3000"
-      ENV_FILE_PATH: "/home/ec2-user/define-auth.dev.env"
+      ENV_FILE_PATH: "/home/ec2-user/.prod/auth.p.env"
       DOCKER_NETWORK: "dfn-network"
     steps:
       - name: Checkout
